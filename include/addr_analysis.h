@@ -5,81 +5,57 @@
 #include <vector>
 #include <string>
 #include <set>
+#include <map>
 
 // Forward declarations
 struct CFG;
 struct CFGBlock;
 struct Instruction;
 
-// Vector analysis state
-struct VectorAnalysisState {
-    uint64_t pc_migration;
-    std::vector<int> reg_attrs;           // Register attributes (1024=valid, 256=pending, other=undefined)
-    std::vector<std::vector<uint64_t>> reg_queues; // Assignment instruction PC queues
-    std::vector<uint64_t> simulation_instructions; // Instructions needing simulation
-    CFG* cfg;                           // Control flow graph reference
+// 寄存器段属性枚举
+enum class RegSegAttrib {
+    BIT_1024,    // 1024位可取值
+    BIT_256,     // 256位
+    UNKNOWN      // 未知
 };
 
-// Register usage analysis result
-struct RegisterUsage {
-    bool has_1024;
-    bool has_pending;
+// 寄存器段结构
+struct RegisterSegment {
+    int reg_num;                              // 寄存器号 (0-31)
+    RegSegAttrib attrib;                      // 段属性
+    uint64_t start_addr;                      // 段起始地址
+    uint64_t end_addr;                        // 段结束地址
+    std::vector<const Instruction*> instructions;  // 段内指令列表
+    
+    RegisterSegment(int num, RegSegAttrib attr, uint64_t start) 
+        : reg_num(num), attrib(attr), start_addr(start), end_addr(start) {}
 };
 
 namespace AddrAnalysis {
 
-// Main analysis function - returns translation ranges
-std::vector<std::pair<uint64_t, uint64_t>> analyze_vector_register(uint64_t func_addr, CFG *cfg);
+// 主要分析函数 - 返回翻译范围
+std::vector<std::pair<uint64_t, uint64_t>> analyze_vector_register(CFG *cfg);
 
-// Initialize analysis state
-VectorAnalysisState initialize_analysis_state(uint64_t func_addr);
+// 辅助函数
+bool is_vector_assignment(const Instruction& inst);
+std::vector<RegSegAttrib> query_inst(const Instruction& inst, const std::multimap<uint64_t, RegisterSegment*>& reg_segs);
+int count_unknown(const std::multimap<uint64_t, RegisterSegment*>& reg_segs);
+uint64_t find_branch_merge_block(uint64_t branch1_addr, uint64_t branch2_addr, CFG* cfg, const std::set<uint64_t>& visited_blocks);
 
-// Scan all instructions in CFG
-void scan_instructions(CFG *cfg, VectorAnalysisState& state);
+// 寄存器段初始化算法 - 一条指令地址映射到多个寄存器段
+std::multimap<uint64_t, RegisterSegment*> initial_reg_segs(CFG *cfg);
 
-// Process individual instruction
-void process_instruction(const Instruction& instr, VectorAnalysisState& state);
+// 顺序扫描算法
+void sequential_scan(std::multimap<uint64_t, RegisterSegment*>& reg_segs);
 
-// Check if instruction is vector assignment
-bool is_vector_assignment(const Instruction& instr);
+// 工具函数
+RegSegAttrib get_reg_seg_attrib(int reg_num, const std::multimap<uint64_t, RegisterSegment*>& reg_segs);
+void set_reg_seg_attrib(int reg_num, RegSegAttrib attrib, std::multimap<uint64_t, RegisterSegment*>& reg_segs);
+void finalize_register_segments(std::multimap<uint64_t, RegisterSegment*>& reg_segs);
 
-// Process assignment instruction
-void process_assignment_instruction(const Instruction& instr, uint64_t pc, VectorAnalysisState& state);
-
-// Process non-assignment instruction
-void process_non_assignment_instruction(const Instruction& instr, uint64_t pc, VectorAnalysisState& state);
-
-// Analyze register usage in instruction
-RegisterUsage analyze_register_usage(const Instruction& instr, const VectorAnalysisState& state);
-
-// Set pending registers to 1024-bit
-void set_pending_registers_to_1024(const Instruction& instr, VectorAnalysisState& state);
-
-// Parse target register from instruction
-int parse_target_register(const Instruction& instr);
-
-// Parse register number from string
-int parse_register_number(const std::string& reg_str);
-
-// Execute modify operations
-void execute_modify_operations(int target_reg, uint64_t start_pc, VectorAnalysisState& state);
-
-// Find block by PC
-const CFGBlock* find_block_by_pc(CFG *cfg, uint64_t pc);
-
-// Find block by address
-const CFGBlock* find_block_by_addr(CFG *cfg, uint64_t addr);
-
-// Scan block instructions in reverse
-void scan_block_instructions_reverse(const CFGBlock& block, uint64_t start_pc, uint64_t pc_migration, 
-                                int target_reg, VectorAnalysisState& state,
-                                std::vector<uint64_t>& worklist, std::set<uint64_t>& visited_blocks);
-
-// Check if instruction contains register
-bool instruction_contains_register(const Instruction& instr, int target_reg);
-
-// Process register dependencies
-void process_register_dependencies(const Instruction& instr, int target_reg, uint64_t pc, VectorAnalysisState& state);
+// 翻译范围生成
+std::vector<std::pair<uint64_t, uint64_t>> generate_translation_ranges(
+    const std::multimap<uint64_t, RegisterSegment*>& reg_segs);
 
 } // namespace AddrAnalysis
 

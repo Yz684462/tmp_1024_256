@@ -26,6 +26,8 @@ uint64_t Addr::get_migration_addr(void* migration_handle, const char* migration_
 }
 
 std::vector<std::pair<uint64_t, uint64_t>> Addr::get_translation_ranges(uint64_t addr) {
+    printf("[ADDR] Getting translation ranges for address 0x%lx\n", addr);
+    
     // Initialize r_core
     RCore *core = AddrCore::init_r_core();
     if (!core) {
@@ -40,15 +42,19 @@ std::vector<std::pair<uint64_t, uint64_t>> Addr::get_translation_ranges(uint64_t
         return std::vector<std::pair<uint64_t, uint64_t>>();
     }
     
-    // Get control flow graph from function
-    CFG *cfg = AddrCFG::build_cfg(func, core);
+    // Get control flow graph from function, cut at migration address
+    CFG *cfg = AddrCFG::build_cfg(func, core, addr);
     
     // Analyze vector register usage and get translation ranges
-    std::vector<std::pair<uint64_t, uint64_t>> ranges = AddrAnalysis::analyze_vector_register(addr, cfg);
+    std::vector<std::pair<uint64_t, uint64_t>> ranges = AddrAnalysis::analyze_vector_register(cfg);
     
     // Cleanup CFG and core
     delete cfg;
     r_core_free(core);
+    
+    printf("[ADDR] Translation ranges analysis completed\n");
+    printf("  CFG blocks: %zu\n", cfg->blocks.size());
+    printf("  Translation ranges: %zu\n", ranges.size());
     
     return ranges;
 }

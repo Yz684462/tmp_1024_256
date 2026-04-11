@@ -35,11 +35,11 @@ struct CFG {
 
 namespace AddrCFG {
 
-// Build CFG from function
-CFG* build_cfg(RAnalFunction *func, RCore *core);
+// Build control flow graph from function, optionally cut at migration address
+CFG* build_cfg(RAnalFunction *func, RCore *core, uint64_t migration_addr = 0);
 
-// Create CFG block from RAnalBlock
-CFGBlock create_cfg_block(RAnalBlock *block, RCore *core);
+// Create CFG block from RAnalBlock, optionally start from specific instruction
+CFGBlock create_cfg_block(RAnalBlock *block, RCore *core, size_t start_inst_index = 0);
 
 // Create instruction from RAnalOp
 Instruction create_instruction(RAnalOp *op, uint64_t addr);

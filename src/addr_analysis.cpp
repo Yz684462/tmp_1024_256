@@ -3,266 +3,412 @@
 #include "../include/config.h"
 #include <r_core.h>
 #include <r_anal.h>
+#include <algorithm>
 
 namespace AddrAnalysis {
 
-std::vector<std::pair<uint64_t, uint64_t>> analyze_vector_register(uint64_t func_addr, CFG *cfg) {
-    printf("[ANALYZE] Vector register analysis for function at 0x%lx\n", func_addr);
+std::vector<std::pair<uint64_t, uint64_t>> analyze_vector_register(CFG *cfg) {
+    printf("[ANALYZE] Vector register analysis\n");
     
     if (!cfg) {
         return std::vector<std::pair<uint64_t, uint64_t>>();
     }
     
-    // Initialize analysis state
-    VectorAnalysisState state = initialize_analysis_state(func_addr);
-    state.cfg = cfg;
-    
-    // Scan all instructions
-    scan_instructions(cfg, state);
-    
-    // Convert simulation instructions to ranges
-    std::vector<std::pair<uint64_t, uint64_t>> ranges;
-    for (uint64_t pc : state.simulation_instructions) {
-        // Find the basic block containing this PC
-        for (const auto& block : cfg->blocks) {
-            if (pc >= block.addr && pc < block.addr + block.size) {
-                ranges.push_back(std::make_pair(block.addr, block.addr + block.size));
-                break;
-            }
-        }
+    if (cfg->blocks.empty()) {
+        printf("[WARNING] CFG has no blocks\n");
+        return std::vector<std::pair<uint64_t, uint64_t>>();
     }
     
+    // 步骤1：寄存器段初始化
+    std::map<int, RegisterSegment*> reg_segs = initial_reg_segs(cfg);
+    
+    // 步骤2：顺序扫描算法
+    sequential_scan(reg_segs);
+    
+    // 步骤3：完成寄存器段处理
+    finalize_register_segments(reg_segs);
+    
+    // 步骤4：生成翻译范围
+    std::vector<std::pair<uint64_t, uint64_t>> ranges = generate_translation_ranges(reg_segs);
+    
     printf("[ANALYZE] Vector register analysis completed\n");
-    printf("  Instructions needing simulation: %zu\n", state.simulation_instructions.size());
+    printf("  Register segments created: %zu\n", reg_segs.size());
     printf("  Translation ranges generated: %zu\n", ranges.size());
+    
+    // 清理内存
+    for (auto& pair : reg_segs) {
+        delete pair.second;
+    }
     
     return ranges;
 }
 
-VectorAnalysisState initialize_analysis_state(uint64_t func_addr) {
-    VectorAnalysisState state;
-    state.pc_migration = func_addr;
-    state.reg_attrs.resize(32, 1024); // All registers start as 1024-bit
-    state.reg_queues.resize(32); // Initialize queues for each register
-    
-    return state;
+bool is_vector_assignment(const Instruction& inst) {
+    // 判断指令是否是向量赋值指令
+    return inst.mnemonic.find("v") == 0 || 
+           inst.mnemonic == "vlw.v" || 
+           inst.mnemonic == "vsw.v" ||
+           inst.mnemonic == "vmv.v.v" ||
+           inst.mnemonic == "vadd.vv" ||
+           inst.mnemonic == "vsub.vv" ||
+           inst.mnemonic == "vmul.vv" ||
+           inst.mnemonic == "vdiv.vv" ||
+           inst.mnemonic == "vsetvli";
 }
 
-void scan_instructions(CFG *cfg, VectorAnalysisState& state) {
-    for (const auto& block : cfg->blocks) {
-        for (const auto& instr : block.instructions) {
-            process_instruction(instr, state);
+std::vector<RegSegAttrib> query_inst(const Instruction& inst, const std::multimap<uint64_t, RegisterSegment*>& reg_segs) {
+    // Query instruction's register attributes
+    std::vector<RegSegAttrib> attribs;
+    
+    for (const auto& operand : inst.operands) {
+        if (operand.find("v") == 0) {
+            try {
+                std::string reg_str = operand.substr(1);
+                int reg_num = std::stoi(reg_str);
+                if (reg_num >= 0 && reg_num < 32) {
+                    // Find segment for this register - look for most recent segment
+                    RegisterSegment* latest_seg = nullptr;
+                    uint64_t latest_addr = 0;
+                    
+                    for (const auto& pair : reg_segs) {
+                        if (pair.second->reg_num == reg_num && pair.first <= inst.addr) {
+                            if (pair.first > latest_addr) {
+                                latest_addr = pair.first;
+                                latest_seg = pair.second;
+                            }
+                        }
+                    }
+                    
+                    if (latest_seg) {
+                        attribs.push_back(latest_seg->attrib);
+                    }
+                }
+            } catch (...) {
+                // Ignore parsing errors
+            }
         }
     }
+    
+    return attribs;
 }
 
-void process_instruction(const Instruction& instr, VectorAnalysisState& state) {
-    uint64_t current_pc = instr.addr;
-    
-    if (is_vector_assignment(instr)) {
-        process_assignment_instruction(instr, current_pc, state);
-    } else {
-        process_non_assignment_instruction(instr, current_pc, state);
+int count_unknown(const std::multimap<uint64_t, RegisterSegment*>& reg_segs) {
+    // Count how many segments have unknown attribute
+    int count = 0;
+    for (const auto& pair : reg_segs) {
+        if (pair.second->attrib == RegSegAttrib::UNKNOWN) {
+            count++;
+        }
     }
+    return count;
 }
 
-bool is_vector_assignment(const Instruction& instr) {
-    return instr.mnemonic.find("v") == 0 || 
-           instr.mnemonic == "vlw.v" || 
-           instr.mnemonic == "vsw.v" ||
-           instr.mnemonic == "vmv.v.v" ||
-           instr.mnemonic == "vadd.vv" ||
-           instr.mnemonic == "vsub.vv" ||
-           instr.mnemonic == "vmul.vv" ||
-           instr.mnemonic == "vdiv.vv" ||
-           instr.mnemonic == "vsetvli";
-}
-
-void process_assignment_instruction(const Instruction& instr, uint64_t pc, VectorAnalysisState& state) {
-    int target_reg = parse_target_register(instr);
+uint64_t find_branch_merge_block(uint64_t branch1_addr, uint64_t branch2_addr, CFG* cfg, const std::set<uint64_t>& visited_blocks) {
+    // Find merge block of two branches by traversing CFG
+    std::vector<uint64_t> worklist1 = {branch1_addr};
+    std::vector<uint64_t> worklist2 = {branch2_addr};
+    std::set<uint64_t> reachable_from_branch1;
+    std::set<uint64_t> reachable_from_branch2;
     
-    if (target_reg < 0 || target_reg >= 32) {
-        return;
-    }
-    
-    // Handle pending attribute
-    if (state.reg_attrs[target_reg] != 1024) {
-        printf("    [MODIFY] Set reg v%d to 1024-bit at PC 0x%lx\n", target_reg, pc);
-        state.reg_attrs[target_reg] = 1024;
-    }
-    
-    // Mark as pending and add to queue
-    state.reg_attrs[target_reg] = 256; // Pending
-    state.reg_queues[target_reg].push_back(pc);
-    
-    // Execute modify operations
-    execute_modify_operations(target_reg, pc, state);
-}
-
-void process_non_assignment_instruction(const Instruction& instr, uint64_t pc, VectorAnalysisState& state) {
-    RegisterUsage usage = analyze_register_usage(instr, state);
-    
-    if (usage.has_1024 && usage.has_pending) {
-        // Set pending registers to 1024-bit
-        printf("    [MODIFY] Set pending regs to 1024-bit at PC 0x%lx\n", pc);
-        set_pending_registers_to_1024(instr, state);
-    }
-    
-    if (usage.has_1024) {
-        state.simulation_instructions.push_back(pc);
-    }
-}
-
-RegisterUsage analyze_register_usage(const Instruction& instr, const VectorAnalysisState& state) {
-    RegisterUsage usage;
-    
-    for (const auto& operand : instr.operands) {
-        if (operand.find("v") == 0) {
-            int reg_num = parse_register_number(operand);
-            if (reg_num >= 0 && reg_num < 32) {
-                if (state.reg_attrs[reg_num] == 1024) {
-                    usage.has_1024 = true;
-                } else {
-                    usage.has_pending = true;
+    // Find all blocks reachable from branch1
+    while (!worklist1.empty()) {
+        uint64_t current = worklist1.back();
+        worklist1.pop_back();
+        
+        if (reachable_from_branch1.find(current) != reachable_from_branch1.end()) {
+            continue;
+        }
+        
+        reachable_from_branch1.insert(current);
+        
+        // Find current block
+        const CFGBlock* current_block = nullptr;
+        for (const auto& block : cfg->blocks) {
+            if (block.addr == current) {
+                current_block = &block;
+                break;
+            }
+        }
+        
+        if (current_block) {
+            for (uint64_t succ_addr : current_block->successors) {
+                if (reachable_from_branch1.find(succ_addr) == reachable_from_branch1.end()) {
+                    worklist1.push_back(succ_addr);
                 }
             }
         }
     }
     
-    return usage;
-}
-
-void set_pending_registers_to_1024(const Instruction& instr, VectorAnalysisState& state) {
-    for (const auto& operand : instr.operands) {
-        if (operand.find("v") == 0) {
-            int reg_num = parse_register_number(operand);
-            if (reg_num >= 0 && reg_num < 32 && state.reg_attrs[reg_num] != 1024) {
-                state.reg_attrs[reg_num] = 1024;
+    // Find all blocks reachable from branch2
+    while (!worklist2.empty()) {
+        uint64_t current = worklist2.back();
+        worklist2.pop_back();
+        
+        if (reachable_from_branch2.find(current) != reachable_from_branch2.end()) {
+            continue;
+        }
+        
+        reachable_from_branch2.insert(current);
+        
+        // Find current block
+        const CFGBlock* current_block = nullptr;
+        for (const auto& block : cfg->blocks) {
+            if (block.addr == current) {
+                current_block = &block;
+                break;
+            }
+        }
+        
+        if (current_block) {
+            for (uint64_t succ_addr : current_block->successors) {
+                if (reachable_from_branch2.find(succ_addr) == reachable_from_branch2.end()) {
+                    worklist2.push_back(succ_addr);
+                }
             }
         }
     }
-}
-
-int parse_target_register(const Instruction& instr) {
-    if (instr.operands.empty()) {
-        return -1;
-    }
     
-    // Try to extract register number from first operand
-    for (const auto& operand : instr.operands) {
-        if (operand.find("v") == 0) {
-            return parse_register_number(operand);
+    // Find first block reachable from both branches (excluding the branch blocks themselves)
+    for (uint64_t addr : reachable_from_branch1) {
+        if (addr != branch1_addr && addr != branch2_addr && 
+            reachable_from_branch2.find(addr) != reachable_from_branch2.end()) {
+            // Skip if already visited
+            if (visited_blocks.find(addr) == visited_blocks.end()) {
+                return addr;
+            }
         }
     }
     
-    return -1;
+    return 0; // No merge block found
 }
 
-int parse_register_number(const std::string& reg_str) {
-    if (reg_str.empty() || reg_str[0] != 'v') {
-        return -1;
-    }
-    
-    try {
-        std::string num_str = reg_str.substr(1);
-        return std::stoi(num_str);
-    } catch (...) {
-        return -1;
-    }
-}
-
-void execute_modify_operations(int target_reg, uint64_t start_pc, VectorAnalysisState& state) {
+std::multimap<uint64_t, RegisterSegment*> initial_reg_segs(CFG *cfg) {
+    // Register segment initialization algorithm - one instruction address maps to multiple register segments
+    std::multimap<uint64_t, RegisterSegment*> reg_segs;
     std::set<uint64_t> visited_blocks;
-    std::vector<uint64_t> worklist;
     
-    // Find start block
-    const CFGBlock* start_block = find_block_by_pc(state.cfg, start_pc);
-    if (!start_block) {
-        return;
+    if (cfg->blocks.empty()) {
+        printf("[WARNING] CFG has no blocks\n");
+        return reg_segs;
     }
     
-    worklist.push_back(start_block->addr);
-    visited_blocks.insert(start_block->addr);
+    // Initialize register segments: for each register, create a segment with only the first instruction of entry block, attribute = 1024
+    // Use instruction address as key, multiple registers can map to same instruction address
+    for (int i = 0; i < 32; ++i) {
+        if (!cfg->blocks.empty() && !cfg->blocks[0].instructions.empty()) {
+            const Instruction* first_inst = &(cfg->blocks[0].instructions[0]);
+            RegisterSegment* seg = new RegisterSegment(i, RegSegAttrib::BIT_1024, first_inst->addr);
+            seg->instructions.push_back(first_inst);
+            seg->end_addr = first_inst->addr;
+            reg_segs.insert({first_inst->addr, seg});  // Use multimap for one-to-many mapping
+        }
+    }
     
-    // Process worklist
+    // Start from entry block and scan control flow graph
+    std::vector<uint64_t> worklist;
+    worklist.push_back(cfg->entry_block_addr);
+    visited_blocks.insert(cfg->entry_block_addr);
+    
     while (!worklist.empty()) {
         uint64_t current_block_addr = worklist.back();
         worklist.pop_back();
         
-        const CFGBlock* current_block = find_block_by_addr(state.cfg, current_block_addr);
+        // Find current block
+        const CFGBlock* current_block = nullptr;
+        for (const auto& block : cfg->blocks) {
+            if (block.addr == current_block_addr) {
+                current_block = &block;
+                break;
+            }
+        }
+        
         if (!current_block) continue;
         
-        // Scan instructions in reverse
-        scan_block_instructions_reverse(*current_block, start_pc, state.pc_migration, target_reg, state, worklist, visited_blocks);
-    }
-}
-
-const CFGBlock* find_block_by_pc(CFG *cfg, uint64_t pc) {
-    for (const auto& block : cfg->blocks) {
-        if (pc >= block.addr && pc < block.addr + block.size) {
-            return &block;
+        // Visit current block, scan instructions one by one
+        for (const auto& inst : current_block->instructions) {
+            if (is_vector_assignment(inst)) {
+                // If it's a vector assignment, fill the target register's segment completely
+                int target_reg = -1;
+                for (const auto& operand : inst.operands) {
+                    if (operand.find("v") == 0) {
+                        try {
+                            std::string reg_str = operand.substr(1);
+                            int reg_num = std::stoi(reg_str);
+                            if (reg_num >= 0 && reg_num < 32) {
+                                target_reg = reg_num;
+                                break;
+                            }
+                        } catch (...) {
+                            // Ignore parsing errors
+                        }
+                    }
+                }
+                
+                if (target_reg >= 0 && target_reg < 32) {
+                    // Find and fill current segment for this register
+                    RegisterSegment* current_seg = nullptr;
+                    auto range = reg_segs.equal_range(inst.addr);
+                    for (auto it = range.first; it != range.second; ++it) {
+                        if (it->second->reg_num == target_reg) {
+                            current_seg = it->second;
+                            break;
+                        }
+                    }
+                    
+                    // If no segment found for this register at this instruction, look for previous segment
+                    if (!current_seg) {
+                        for (auto it = reg_segs.rbegin(); it != reg_segs.rend(); ++it) {
+                            if (it->second->reg_num == target_reg && it->first < inst.addr) {
+                                current_seg = it->second;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Fill current segment
+                    if (current_seg) {
+                        current_seg->end_addr = inst.addr;
+                    }
+                    
+                    // Add another register segment, instructions start from this vector assignment instruction, segment attribute is unknown
+                    RegisterSegment* new_seg = new RegisterSegment(target_reg, RegSegAttrib::UNKNOWN, inst.addr);
+                    new_seg->instructions.push_back(&inst);
+                    reg_segs.insert({inst.addr, new_seg});  // Use multimap for one-to-many mapping
+                }
+            } else {
+                // Non-assignment instruction, add to all unknown segments
+                for (auto& pair : reg_segs) {
+                    if (pair.second->attrib == RegSegAttrib::UNKNOWN) {
+                        pair.second->instructions.push_back(&inst);
+                        pair.second->end_addr = inst.addr;
+                    }
+                }
+            }
         }
-    }
-    return nullptr;
-}
-
-const CFGBlock* find_block_by_addr(CFG *cfg, uint64_t addr) {
-    for (const auto& block : cfg->blocks) {
-        if (block.addr == addr) {
-            return &block;
-        }
-    }
-    return nullptr;
-}
-
-void scan_block_instructions_reverse(const CFGBlock& block, uint64_t start_pc, uint64_t pc_migration, 
-                                int target_reg, VectorAnalysisState& state,
-                                std::vector<uint64_t>& worklist, std::set<uint64_t>& visited_blocks) {
-    for (int64_t i = block.instructions.size() - 1; i >= 0; --i) {
-        const Instruction& instr = block.instructions[i];
-        uint64_t instr_pc = instr.addr;
         
-        // Check instruction range
-        if (instr_pc > start_pc) continue;
-        if (instr_pc < pc_migration) break;
-        
-        // Check if instruction contains target register
-        if (instruction_contains_register(instr, target_reg)) {
-            process_register_dependencies(instr, target_reg, instr_pc, state);
+        // Determine next block to visit based on current block's exits
+        if (current_block->successors.size() == 2) {
+            // Two exits - handle branch logic
+            bool both_unvisited = true;
+            bool one_visited = false;
+            
+            for (uint64_t succ_addr : current_block->successors) {
+                if (visited_blocks.find(succ_addr) != visited_blocks.end()) {
+                    both_unvisited = false;
+                    one_visited = true;
+                } else {
+                    if (one_visited) {
+                        // Found unvisited block
+                        worklist.push_back(succ_addr);
+                        visited_blocks.insert(succ_addr);
+                    }
+                }
+            }
+            
+            if (both_unvisited) {
+                // Branch - blocks on branches are not visited, find merge block
+                uint64_t merge_block = find_branch_merge_block(current_block->successors[0], current_block->successors[1], cfg, visited_blocks);
+                if (merge_block != 0) {
+                    worklist.push_back(merge_block);
+                    visited_blocks.insert(merge_block);
+                }
+                continue;
+            }
+        } else if (current_block->successors.size() == 1) {
+            // One exit, scanning process continues from this exit
+            uint64_t succ_addr = current_block->successors[0];
+            if (visited_blocks.find(succ_addr) == visited_blocks.end()) {
+                worklist.push_back(succ_addr);
+                visited_blocks.insert(succ_addr);
+            }
         }
     }
     
-    // Add predecessors to worklist
-    for (uint64_t pred_addr : block.predecessors) {
-        if (visited_blocks.find(pred_addr) == visited_blocks.end()) {
-            visited_blocks.insert(pred_addr);
-            worklist.push_back(pred_addr);
+    // Fill all currently unfilled register segments to the last instruction
+    for (auto& pair : reg_segs) {
+        if (pair.second->attrib == RegSegAttrib::UNKNOWN && pair.second->instructions.empty()) {
+            // Find the last instruction
+            if (!cfg->blocks.empty()) {
+                const CFGBlock& last_block = cfg->blocks.back();
+                if (!last_block.instructions.empty()) {
+                    const Instruction* last_inst = &(last_block.instructions.back());
+                    pair.second->instructions.push_back(last_inst);
+                    pair.second->end_addr = last_inst->addr;
+                }
+            }
+        }
+    }
+    
+    return reg_segs;
+}
+
+void sequential_scan(std::multimap<uint64_t, RegisterSegment*>& reg_segs) {
+    // Sequential scan algorithm
+    while (true) {
+        int unknown_cnt_before = count_unknown(reg_segs);
+        
+        // Process all unknown segments
+        for (auto& pair : reg_segs) {
+            RegisterSegment* reg_seg = pair.second;
+            if (reg_seg->attrib == RegSegAttrib::UNKNOWN) {
+                // Query each instruction in the segment
+                for (const Instruction* inst : reg_seg->instructions) {
+                    std::vector<RegSegAttrib> attribs = query_inst(*inst, reg_segs);
+                    
+                    // If any attribute is 1024, set current segment to 1024
+                    if (std::find(attribs.begin(), attribs.end(), RegSegAttrib::BIT_1024) != attribs.end()) {
+                        reg_seg->attrib = RegSegAttrib::BIT_1024;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        int unknown_cnt_after = count_unknown(reg_segs);
+        
+        // If unknown segment count hasn't changed, exit loop
+        if (unknown_cnt_after == unknown_cnt_before) {
+            break;
+        }
+    }
+    
+    // Set all remaining unknown segments to 256
+    for (auto& pair : reg_segs) {
+        if (pair.second->attrib == RegSegAttrib::UNKNOWN) {
+            pair.second->attrib = RegSegAttrib::BIT_256;
         }
     }
 }
 
-bool instruction_contains_register(const Instruction& instr, int target_reg) {
-    for (const auto& operand : instr.operands) {
-        if (operand.find("v") == 0) {
-            int reg_num = parse_register_number(operand);
-            if (reg_num == target_reg) {
-                return true;
-            }
+void finalize_register_segments(std::multimap<uint64_t, RegisterSegment*>& reg_segs) {
+    // Finalize register segment processing
+    for (auto& pair : reg_segs) {
+        RegisterSegment* seg = pair.second;
+        if (seg->instructions.empty()) {
+            // If segment has no instructions, set to 256
+            seg->attrib = RegSegAttrib::BIT_256;
         }
     }
-    return false;
 }
 
-void process_register_dependencies(const Instruction& instr, int target_reg, uint64_t pc, VectorAnalysisState& state) {
-    for (const auto& operand : instr.operands) {
-        if (operand.find("v") == 0) {
-            int reg_num = parse_register_number(operand);
-            if (reg_num >= 0 && reg_num < 32 && state.reg_attrs[reg_num] != 1024) {
-                printf("    [QUEUE] Add modify operation for reg v%d at PC 0x%lx\n", reg_num, pc);
-                state.reg_queues[reg_num].push_back(pc);
+std::vector<std::pair<uint64_t, uint64_t>> generate_translation_ranges(
+    const std::multimap<uint64_t, RegisterSegment*>& reg_segs) {
+    // Generate translation ranges - works on already cut CFG
+    std::vector<std::pair<uint64_t, uint64_t>> ranges;
+    std::set<std::pair<uint64_t, uint64_t>> unique_ranges;
+    
+    for (const auto& pair : reg_segs) {
+        const RegisterSegment* seg = pair.second;
+        if (seg->attrib == RegSegAttrib::BIT_1024) {
+            // For 1024 segments, generate translation ranges
+            if (!seg->instructions.empty()) {
+                uint64_t start_addr = seg->start_addr;
+                uint64_t end_addr = seg->end_addr;
+                ranges.push_back(std::make_pair(start_addr, end_addr));
             }
         }
     }
+    return ranges;
 }
 
 } // namespace AddrAnalysis

@@ -1,5 +1,6 @@
 #include "handle.h"
 #include "../include/vector_context.h"
+#include "../include/thread.h"
 #include "../include/cpu.h"
 #include "../include/addr.h"
 #include "../include/globals.h"
@@ -13,7 +14,7 @@
 
 void Handle::make_translations(int thread_index) {
     // Call translator.py with thread index and translation ranges (converted to file offsets)
-    std::string command = "python3 translator.py " + std::to_string(thread_index);
+    std::string command = "python3 scripts/translator.py " + std::to_string(thread_index);
     
     // Add translation ranges to command (convert virtual addresses to file offsets)
     for (const auto& range : global_translation_ranges) {
@@ -22,7 +23,7 @@ void Handle::make_translations(int thread_index) {
         command += " " + std::to_string(start_offset) + " " + std::to_string(end_offset);
     }
     
-    // Execute the command
+    // Execute command
     int result = system(command.c_str());
     if (result != 0) {
         // Handle error if needed
@@ -44,36 +45,33 @@ void Handle::load_translation_library(int thread_index) {
 
 void Handle::migration_handle(ucontext_t *uc) {
     // Get current thread's index
-    int thread_index = VectorContext::get_or_assign_thread_index();
+    int thread_index = ThreadManager::get_or_assign_thread_index();
     
     // Get OS vector context and save to simulated context
     struct __riscv_v_ext_state* os_vector_context = VectorContext::get_os_vector_context(uc);
     VectorContext::save_os_vector_context_to_simulated_vector_context(os_vector_context, thread_index);
-    
-    // Check if translation_ranges is empty, if so, get translation ranges
-    if (global_translation_ranges.empty()) {
-        global_translation_ranges = Addr::get_translation_ranges(global_migration_addr);
-    }
     
     // Make translations
     make_translations(thread_index);
     
     // Load translation library
     load_translation_library(thread_index);
-    
-    // Switch to regular CPU core
-    switch_cpu_set('x');
+   
+    // // Switch to regular CPU core
+    // switch_cpu_set('x');
 }
 
 void Handle::translation_handle(ucontext_t *uc, uintptr_t fault_pc) {
+    struct __riscv_v_ext_state *os_vector_context = VectorContext::get_os_vector_context(uc);
     // Get current thread's index (must be assigned by migration_handle first)
-    int thread_index = VectorContext::get_thread_index();
+    int thread_index = ThreadManager::get_thread_index();
+    VectorContext::save_os_vector_context_to_simulated_vector_context(os_vector_context, thread_index);
     
     // Find corresponding translation range (use offset directly)
     std::string func_name;
     uint64_t fault_pc_offset = fault_pc - global_migration_lib_base_addr;
     func_name = "translated_function_" + std::to_string(fault_pc_offset);
-        
+    
     // Get cached translation library for this thread
     auto it = global_thread_translated_handles.find(thread_index);
     if (it == global_thread_translated_handles.end()) {
@@ -89,31 +87,10 @@ void Handle::translation_handle(ucontext_t *uc, uintptr_t fault_pc) {
     if (!fn) {
         return; // Function not found
     }
-    
-    // Restore general purpose registers from context
-    LOAD(a0, 10, uc);
-    LOAD(a1, 11, uc);
-    LOAD(a2, 12, uc);
-    LOAD(a3, 13, uc);
-    LOAD(a4, 14, uc);
-    LOAD(s0, 8, uc);
-    LOAD(s1, 9, uc);
-    
     // Call the translated function
     fn();
-    
-    // Update context with changed registers
-    STORE(a0, 10, uc);
-    STORE(a1, 11, uc);
-    STORE(a2, 12, uc);
-    STORE(a3, 13, uc);
-    STORE(a4, 14, uc);
-    STORE(s0, 8, uc);
-    STORE(s1, 9, uc);
-    
     // Update vector registers from simulated context
-    struct __riscv_v_ext_state *v_ext_state = VectorContext::get_os_vector_context(uc);
-    VectorContext::save_simulated_vector_context_to_os_vector_context(v_ext_state, thread_index);
+    VectorContext::save_simulated_vector_context_to_os_vector_context(os_vector_context, thread_index);
     
     printf("[MIGRATION] >>> translation_handle completed <<<\n\n");
     fflush(stdout);
