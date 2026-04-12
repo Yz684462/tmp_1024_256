@@ -10,6 +10,8 @@
 #include <dlfcn.h>
 #include <iostream>
 #include <signal.h>
+#define _GNU_SOURCE
+#include <link.h>
 
 // Constructor function that runs automatically when program loads
 __attribute__((constructor))
@@ -21,9 +23,9 @@ void init() {
     }
     
     // Get migration library base address
-    Dl_info dl_info;
-    if (dladdr((void*)global_migration_lib_handle, &dl_info) && dl_info.dli_fbase) {
-        global_migration_lib_base_addr = (uint64_t)dl_info.dli_fbase;
+    struct link_map *map;
+    if (dlinfo(global_migration_lib_handle, RTLD_DI_LINKMAP, &map) == 0) {
+        global_migration_lib_base_addr = (uint64_t)map->l_addr;
     } else {
         return;
     }

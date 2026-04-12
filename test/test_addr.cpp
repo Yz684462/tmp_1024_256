@@ -6,6 +6,8 @@
 #include <dlfcn.h>
 #include <iostream>
 #include <signal.h>
+#define _GNU_SOURCE
+#include <link.h>
 
 int main() {    
     std::cout << "[TEST] Starting initialization test..." << std::endl;
@@ -20,12 +22,12 @@ int main() {
         std::cout << "[TEST] Successfully loaded migration library" << std::endl;
         
         // Get migration library base address
-        Dl_info dl_info;
-        if (dladdr((void*)global_migration_lib_handle, &dl_info) && dl_info.dli_fbase) {
-            global_migration_lib_base_addr = (uint64_t)dl_info.dli_fbase;
+        struct link_map *map;
+        if (dlinfo(global_migration_lib_handle, RTLD_DI_LINKMAP, &map) == 0) {
+            global_migration_lib_base_addr = (uint64_t)map->l_addr;
             std::cout << "[TEST] Migration library base address: 0x" << std::hex << global_migration_lib_base_addr << std::dec << std::endl;
         } else {
-            std::cout << "[TEST] Warning: Could not get library base address" << std::endl;
+            std::cout << "[TEST] Warning: Could not get library base address: " << dlerror() << std::endl;
             return 1;
         }
         

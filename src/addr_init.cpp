@@ -27,35 +27,27 @@ RCore* init_r_core() {
         r_core_free(core);
         return nullptr;
     }
-    r_core_bin_load(core, nullptr, UT64_MAX);
+    r_core_bin_load(core, nullptr, 0);
     
     // Set architecture to RISC-V
     r_config_set(core->config, "asm.arch", "riscv");
     r_config_set_i(core->config, "asm.bits", 64);
-    
-    // Execute deep analysis
-    r_core_cmd0(core, "aaa");
+    r_config_set(core->config, "bin.relocs.apply", "true");
+    r_config_set(core->config, "bin.cache", "true");
     
     return core;
 }
 
 RAnalFunction* find_func(uint64_t addr, RCore *core) {
-    // Find function containing addr
-    RList *functions = r_anal_get_fcns(core->anal);
-    RAnalFunction *target_func = nullptr;
-    RListIter *iter;
-    void *ptr;
-    
-    r_list_foreach(functions, iter, ptr) {
-        RAnalFunction *fcn = reinterpret_cast<RAnalFunction*>(ptr);
-        ut64 fcn_size = r_anal_function_linear_size(fcn);
-        if (addr >= fcn->addr && addr < fcn->addr + fcn_size) {
-            target_func = fcn;
-            break;
-        }
+    r_core_cmdf(core, "af @ 0x%llx", rel_pc);
+
+    // 3. Now get the function that contains 'addr'
+    RAnalFunction *fcn = r_anal_get_fcn_in(core->anal, addr, R_ANAL_FCN_TYPE_FCN);
+    if (!fcn) {
+        return nullptr;
     }
-    
-    return target_func;
+
+    return fcn;
 }
 
 } // namespace AddrCore

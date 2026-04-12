@@ -1,16 +1,16 @@
-#include "addr_analysis.h"
+#include "../include/addr_analysis.h"
 #include "../include/globals.h"
-#include "../include/config.h"
-#include <r_core.h>
-#include <r_anal.h>
 #include <algorithm>
+#include <stack>
+#include <set>
+#include <r_anal.h>
+#include <iostream>
 
 namespace AddrAnalysis {
 
 bool is_vector_assignment(const std::string& mnemonic) {
     // Check if instruction is a vector assignment (writes to vector register)
-    return mnemonic.find("v") == 0 || 
-           mnemonic == "vlw.v" || 
+    return mnemonic == "vlw.v" || 
            mnemonic == "vsw.v" ||
            mnemonic == "vmv.v.v" ||
            mnemonic == "vadd.vv" ||
@@ -25,96 +25,144 @@ bool is_vector_instruction(const std::string& mnemonic) {
     return mnemonic.find("v") == 0;
 }
 
-void init_sources_insts(RAnalFunction *func, 
+void init_sources_insts(RCore *core, RAnalFunction *func, 
                        std::vector<Source*>& sources, 
                        std::map<uint64_t, VectorInst*>& insts) {
     // Initialize sources and instructions by scanning all basic blocks
-    RListIter *iter;
-    RAnalBlock *bb;
+    std::cout << "[DEBUG] init_sources_insts: Starting analysis of function at 0x" 
+              << std::hex << func->addr << std::dec << std::endl;
     
-    r_list_foreach (func->bbs, iter, bb) {
+    RListIter *iter;
+    void * ptr;
+    r_list_foreach (func->bbs, iter, ptr) {
+        RAnalBlock *bb = (RAnalBlock *)ptr;        
+        std::cout << "[DEBUG] init_sources_insts: Processing basic block at 0x" 
+                  << std::hex << bb->addr << " (size: " << std::dec << bb->size << ")" << std::endl;
+        
         // Parse instructions in this block using Radare2's analysis
         uint64_t bb_addr = bb->addr;
         uint64_t bb_size = bb->size;
         
-        RAnalOp *op;
         uint64_t current_addr = bb_addr;
         
         while (current_addr < bb_addr + bb_size) {
             // Use Radare2 to analyze instruction at current address
-            op = r_anal_op(func->anal, current_addr, current_addr - func->addr, R_ARCH_RISCV);
-            if (!op) {
-                // If analysis fails, assume 4-byte instruction and skip
-                current_addr += 4;
-                continue;
-            }
+            std::cout << "[DEBUG] init_sources_insts: Analyzing instruction at 0x" 
+                      << std::hex << current_addr << std::dec << std::endl;
             
-            // Get instruction mnemonic and parse operands as register numbers
-            std::string mnemonic = op->mnemonic ? op->mnemonic : "";
-            std::vector<int> reg_nums;
-            
-            // Parse operands to extract vector register numbers
-            if (op->opstr) {
-                std::string op_str = op->opstr;
-                size_t pos = 0;
-                while (pos < op_str.length()) {
-                    // Skip whitespace
-                    while (pos < op_str.length() && isspace(op_str[pos])) pos++;
-                    if (pos >= op_str.length()) break;
-                    
-                    // Find next comma or end
-                    size_t end = pos;
-                    while (end < op_str.length() && op_str[end] != ',') end++;
-                    
-                    std::string operand = op_str.substr(pos, end - pos);
-                    
-                    // Check if operand is a vector register and extract number
-                    if (operand.find("v") == 0) {
-                        try {
-                            std::string reg_str = operand.substr(1);
-                            int reg_num = std::stoi(reg_str);
-                            if (reg_num >= 0 && reg_num < 32) {
-                                reg_nums.push_back(reg_num);
-                            }
-                        } catch (...) {
-                            // Ignore parsing errors
-                        }
-                    }
-                    
-                    pos = end + 1; // Skip comma
+            RAnalOp op = {0};
+            ut8 buf[32] = {0}; // Buffer for instruction bytes
+            r_io_read_at(core->io, current_addr, buf, sizeof(buf));
+            int ret = r_anal_op(func->anal, &op, current_addr, buf, sizeof(buf), R_ARCH_OP_MASK_ALL);
+
+            if (ret > 0) {
+                
+                std::string instruction_str = op.mnemonic;
+                std::cout << "[DEBUG] init_sources_insts: Found instruction at 0x" 
+                          << std::hex << current_addr << ": " << instruction_str 
+                          << " (size: " << std::dec << (int)op.size << ")" << std::endl;
+                // Get instruction mnemonic and parse operands as register numbers
+                std::string mnemonic = "";
+                std::string operands = "";
+                
+                // 从instruction_str中解析出助记符和操作数
+                if(!instruction_str.empty()) {
+                    // 解析助记符和操作数
+                    size_t space_pos = instruction_str.find(' ');
+                    mnemonic = instruction_str.substr(0, space_pos);
+                    operands = space_pos != std::string::npos ? instruction_str.substr(space_pos + 1) : "";
+                    std::cout << "[DEBUG] init_sources_insts: Parsed mnemonic='" << mnemonic << "', operands='" << operands << "'" << std::endl;
                 }
-            }
-            
-            // Check if this is a vector assignment
-            if (is_vector_assignment(mnemonic)) {
-                // Extract target register from first operand
-                int target_reg = 0;
-                if (!reg_nums.empty()) {
-                    target_reg = reg_nums[0]; // First register is target
+                std::vector<int> reg_nums;
+                // If this is a vector instruction, create vector instruction object
+                if (is_vector_instruction(mnemonic)) {
+                
+                    // Check if op_str is valid before processing
+                    if (!operands.empty()) {
+                        size_t pos = 0;
+                        while (pos < operands.length()) {
+                            // Skip whitespace
+                            while (pos < operands.length() && isspace(operands[pos])) pos++;
+                            if (pos >= operands.length()) break;
+                            
+                            // Find next comma or end
+                            size_t end = pos;
+                            while (end < operands.length() && operands[end] != ',') end++;
+                            
+                            std::string operand = operands.substr(pos, end - pos);
+                            
+                            // Check if operand is a vector register and extract number
+                            if (operand.find("v") == 0) {
+                                try {
+                                    std::string reg_str = operand.substr(1);
+                                    int reg_num = std::stoi(reg_str);
+                                    if (reg_num >= 0 && reg_num < 32) {
+                                        reg_nums.push_back(reg_num);
+                                    }
+                                } catch (const std::exception& e) {
+                                    std::cout << "[DEBUG] init_sources_insts: Error parsing register number: " << e.what() << std::endl;
+                                }
+                            }
+                            
+                            pos = end + 1; // Skip comma
+                        }
+                    } else {
+                        std::cout << "[DEBUG] init_sources_insts: op_str is empty" << std::endl;
+                    }
+                    std::cout << "[DEBUG] init_sources_insts: Register numbers: ";
+                    for(int reg_num : reg_nums) {
+                        std::cout << reg_num << " ";
+                    }
+                    std::cout << std::endl;
+                    // Check if this is a vector assignment
+                    if (is_vector_assignment(mnemonic)) {
+                        // Extract target register from first operand
+                        int target_reg = 0;
+                        if (!reg_nums.empty()) {
+                            target_reg = reg_nums[0]; // First register is target
+                        }
+                        
+                        Source* source = new Source(current_addr, target_reg);
+                        sources.push_back(source);
+                        std::cout << "[DEBUG] init_sources_insts: Created source at 0x" 
+                                << std::hex << current_addr << " for register v" << target_reg << std::dec << std::endl;
+                    }
+                
+                    VectorInst* vec_inst = new VectorInst(current_addr, op.size, mnemonic, bb, reg_nums);
+                    insts[current_addr] = vec_inst;
+                    std::cout << "[DEBUG] init_sources_insts: Created vector instruction at 0x" 
+                              << std::hex << current_addr << " with " << reg_nums.size() 
+                              << " registers" << std::dec << std::endl;
                 }
                 
-                Source* source = new Source(current_addr, target_reg);
-                sources.push_back(source);
+                // Move to next instruction
+                current_addr += op.size;
             }
-            
-            // If this is also a vector instruction, create vector instruction object
-            if (is_vector_instruction(mnemonic)) {
-                VectorInst* vec_inst = new VectorInst(current_addr, op->size, mnemonic, bb, reg_nums);
-                insts[current_addr] = vec_inst;
-            }
-            
-            // Move to next instruction
-            current_addr += op->size;
-            r_anal_op_free(op);
+            r_anal_op_fini(&op);
         }
     }
+    
+    std::cout << "[DEBUG] init_sources_insts: Analysis complete. Found " 
+              << sources.size() << " sources and " << insts.size() 
+              << " vector instructions" << std::endl;
 }
 
-void tag_sources(RAnalFunction *func,
+void tag_sources(RCore *core, RAnalFunction *func,
                   std::vector<Source*>& sources, 
                   std::map<uint64_t, VectorInst*>& insts) {
     // Tag sources using basic block-based DFS scanning
+    std::cout << "[DEBUG] tag_sources: Starting source tagging for " 
+              << sources.size() << " sources" << std::endl;
     
+    // Create a map from basic block address to basic block pointer
+    std::map<uint64_t, RAnalBlock*> block_map;
+    RListIter *iter;
+    void *ptr;
+    r_list_foreach (func->bbs, iter, ptr) {
+        RAnalBlock *bb = (RAnalBlock *)ptr;
+        block_map[bb->addr] = bb;
+    }
+
     for (Source* source : sources) {
         // Find the instruction that creates this source
         auto inst_it = insts.find(source->inst_addr);
@@ -122,6 +170,10 @@ void tag_sources(RAnalFunction *func,
         
         VectorInst* source_inst = inst_it->second;
         RAnalBlock* start_block = source_inst->parent_block;
+        
+        std::cout << "[DEBUG] tag_sources: Processing source at 0x" 
+                  << std::hex << source->inst_addr << " for register v" 
+                  << source->target_reg << std::dec << std::endl;
         
         // DFS traversal of basic blocks
         std::stack<RAnalBlock*> worklist;
@@ -179,24 +231,29 @@ void tag_sources(RAnalFunction *func,
                 }
                 
                 // Move to next instruction
-                RAnalOp *next_op = r_anal_op(func->anal, current_addr, current_addr - func->addr, R_ARCH_RISCV);
-                if (next_op) {
-                    current_addr += next_op->size;
-                    r_anal_op_free(next_op);
+                RAnalOp next_op = {0};
+                ut8 next_buf[32] = {0};
+                r_io_read_at(core->io, current_addr, next_buf, sizeof(next_buf));
+                int next_ret = r_anal_op(func->anal, &next_op, current_addr, next_buf, sizeof(next_buf), R_ARCH_OP_MASK_ALL);
+                if (next_ret > 0) {
+                    current_addr += next_op.size;
                 } else {
                     current_addr += 4; // Assume 4-byte instruction
                 }
+                r_anal_op_fini(&next_op);
             }
             
             // Add successor blocks to worklist only if path didn't end due to source instruction
             if (!path_ended_by_source) {
-                for (int i = 0; i < current_block->jumpbb_size; i++) {
-                    if (current_block->jumpbb[i]) {
-                        worklist.push(current_block->jumpbb[i]);
+                if (current_block->jump) {
+                    if (block_map.find(current_block->jump) != block_map.end()) {
+                        worklist.push(block_map[current_block->jump]);
                     }
                 }
-                if (current_block->failbb) {
-                    worklist.push(current_block->failbb);
+                if (current_block->fail) {
+                    if (block_map.find(current_block->fail) != block_map.end()) {
+                        worklist.push(block_map[current_block->fail]);
+                    }
                 }
             }
         }
@@ -206,8 +263,13 @@ void tag_sources(RAnalFunction *func,
 void judge_sources(std::vector<Source*>& sources, 
                     std::map<uint64_t, VectorInst*>& insts) {
     // Judge source attributes using iterative marking algorithm
+    std::cout << "[DEBUG] judge_sources: Starting source attribute judgment" << std::endl;
     
+    int iteration = 0;
     while (true) {
+        iteration++;
+        std::cout << "[DEBUG] judge_sources: Iteration " << iteration << std::endl;
+        
         // Count unknown sources before scanning
         int unknown_count_before = 0;
         for (Source* source : sources) {
@@ -222,7 +284,6 @@ void judge_sources(std::vector<Source*>& sources,
             
             // Check each register's source
             for (auto& reg_pair : vec_inst->reg_sources) {
-                int reg_num = reg_pair.first;
                 Source* reg_source = reg_pair.second;
                 
                 // Check if this register has empty source or 1024 source
@@ -232,9 +293,9 @@ void judge_sources(std::vector<Source*>& sources,
                 }
                 
                 if(has_empty_or_1024){
-                    for(auto& reg_pair2 : vec_inst->reg_sources) {
-                        if(reg_pair2.second != nullptr) {
-                            reg_pair2.second->attrib = SourceAttrib::BIT_1024;
+                    for (auto& inner_reg_pair : vec_inst->reg_sources) {
+                        if (inner_reg_pair.second) {
+                            inner_reg_pair.second->attrib = SourceAttrib::BIT_1024;
                         }
                     }
                 }
@@ -267,6 +328,9 @@ std::vector<std::pair<uint64_t, uint64_t>> get_ranges(
     std::vector<Source*>& sources, 
     std::map<uint64_t, VectorInst*>& insts) {
     // Generate translation ranges based on instruction scanning
+    std::cout << "[DEBUG] get_ranges: Generating translation ranges from " 
+              << sources.size() << " sources and " << insts.size() 
+              << " instructions" << std::endl;
     
     std::vector<std::pair<uint64_t, uint64_t>> ranges;
     std::set<uint64_t> translation_addrs;
@@ -287,8 +351,14 @@ std::vector<std::pair<uint64_t, uint64_t>> get_ranges(
         
         if (needs_translation) {
             translation_addrs.insert(vec_inst->inst_addr);
+            std::cout << "[DEBUG] get_ranges: Instruction at 0x" 
+                      << std::hex << vec_inst->inst_addr << " needs translation" 
+                      << std::dec << std::endl;
         }
     }
+    
+    std::cout << "[DEBUG] get_ranges: Found " << translation_addrs.size() 
+              << " instructions needing translation" << std::endl;
     
     // Group consecutive addresses into ranges using actual instruction lengths
     if (translation_addrs.empty()) {
@@ -317,10 +387,16 @@ std::vector<std::pair<uint64_t, uint64_t>> get_ranges(
     // Add the final range
     ranges.push_back(std::make_pair(range_start, prev_end));
     
+    std::cout << "[DEBUG] get_ranges: Generated " << ranges.size() << " translation ranges:" << std::endl;
+    for (size_t i = 0; i < ranges.size(); i++) {
+        std::cout << "[DEBUG]   Range " << i << ": [0x" << std::hex << ranges[i].first 
+                  << ", 0x" << ranges[i].second << ")" << std::dec << std::endl;
+    }
+    
     return ranges;
 }
 
-std::vector<std::pair<uint64_t, uint64_t>> analyze_vector_register(RAnalFunction *func) {
+std::vector<std::pair<uint64_t, uint64_t>> analyze_vector_register(RCore *core, RAnalFunction *func) {
     // Main analysis function using new algorithm
     
     if (!func || !func->bbs) {
@@ -331,13 +407,13 @@ std::vector<std::pair<uint64_t, uint64_t>> analyze_vector_register(RAnalFunction
     // Step 1: Initialize sources and instructions
     std::vector<Source*> sources;
     std::map<uint64_t, VectorInst*> insts;
-    init_sources_insts(func, sources, insts);
+    init_sources_insts(core, func, sources, insts);
     
     printf("[ANALYZE] Initialized %zu sources and %zu vector instructions\n", 
            sources.size(), insts.size());
     
     // Step 2: Tag sources using DFS
-    tag_sources(func, sources, insts);
+    tag_sources(core, func, sources, insts);
     
     // Step 3: Judge source attributes
     judge_sources(sources, insts);

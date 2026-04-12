@@ -5,6 +5,7 @@
 #include <vector>
 #include <map>
 #include <string>
+#include <r_core.h>
 #include <r_anal.h>
 
 // Source attribute enumeration
@@ -46,14 +47,14 @@ struct VectorInst {
 namespace AddrAnalysis {
 
 // Main analysis function - returns translation ranges
-std::vector<std::pair<uint64_t, uint64_t>> analyze_vector_register(RAnalFunction *func);
+std::vector<std::pair<uint64_t, uint64_t>> analyze_vector_register(RCore *core, RAnalFunction *func);
 
 // New algorithm functions
-void init_sources_insts(RAnalFunction *func, 
+void init_sources_insts(RCore *core, RAnalFunction *func, 
                        std::vector<Source*>& sources, 
                        std::map<uint64_t, VectorInst*>& insts);
 
-void tag_sources(RAnalFunction *func,
+void tag_sources(RCore *core, RAnalFunction *func,
                   std::vector<Source*>& sources, 
                   std::map<uint64_t, VectorInst*>& insts);
 

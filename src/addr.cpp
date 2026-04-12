@@ -42,7 +42,7 @@ std::vector<std::pair<uint64_t, uint64_t>> Addr::get_translation_ranges(uint64_t
     }
     
     // Analyze vector register usage and get translation ranges using new algorithm
-    std::vector<std::pair<uint64_t, uint64_t>> ranges = AddrAnalysis::analyze_vector_register(func);
+    std::vector<std::pair<uint64_t, uint64_t>> ranges = AddrAnalysis::analyze_vector_register(core, func);
     
     // Cleanup core
     r_core_free(core);
