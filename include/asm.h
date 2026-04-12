@@ -1,5 +1,5 @@
-#ifndef ASM_H
-#define ASM_H
+#ifndef RVMIG_ASM_H
+#define RVMIG_ASM_H
 
 #include <ucontext.h>
 
@@ -24,4 +24,4 @@
         ); \
 } while(0)
 
-#endif // ASM_H
+#endif // RVMIG_ASM_H

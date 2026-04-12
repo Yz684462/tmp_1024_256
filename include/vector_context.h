@@ -1,5 +1,5 @@
-#ifndef VECTOR_CONTEXT_H
-#define VECTOR_CONTEXT_H
+#ifndef RVMIG_VECTOR_CONTEXT_H
+#define RVMIG_VECTOR_CONTEXT_H
 
 #include <ucontext.h>
 #include <vector>
@@ -27,4 +27,4 @@ public:
     static void initialize_vector_context_pool();
 };
 
-#endif // VECTOR_CONTEXT_H
+#endif // RVMIG_VECTOR_CONTEXT_H

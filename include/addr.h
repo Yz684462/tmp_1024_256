@@ -1,13 +1,10 @@
-#ifndef ADDR_H
-#define ADDR_H
+#ifndef RVMIG_ADDR_H
+#define RVMIG_ADDR_H
 
 #include <cstdint>
 #include <vector>
 #include <string>
 #include <r_anal.h>
-
-// Forward declarations
-class RCore;
 
 // Instruction structure
 struct Instruction {
@@ -46,4 +43,4 @@ public:
     static void set_translation_range_end(uint64_t translation_range_begin, uint64_t translation_range_end);
 };
 
-#endif // ADDR_H
+#endif // RVMIG_ADDR_H

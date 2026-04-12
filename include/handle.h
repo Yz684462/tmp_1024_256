@@ -1,5 +1,5 @@
-#ifndef HANDLE_H
-#define HANDLE_H
+#ifndef RVMIG_HANDLE_H
+#define RVMIG_HANDLE_H
 
 #include <ucontext.h>
 
@@ -12,4 +12,4 @@ public:
     static void translation_handle(ucontext_t *uc, uintptr_t fault_pc);
 };
 
-#endif // HANDLE_H
+#endif // RVMIG_HANDLE_H

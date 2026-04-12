@@ -1,5 +1,5 @@
-#ifndef THREAD_H
-#define THREAD_H
+#ifndef RVMIG_THREAD_H
+#define RVMIG_THREAD_H
 
 #include <thread>
 #include <map>
@@ -18,4 +18,4 @@ public:
     static int get_or_assign_thread_index();
 };
 
-#endif // THREAD_H
+#endif // RVMIG_THREAD_H

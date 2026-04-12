@@ -1,5 +1,5 @@
-#ifndef GLOBALS_H
-#define GLOBALS_H
+#ifndef RVMIG_GLOBALS_H
+#define RVMIG_GLOBALS_H
 
 #include <cstdint>
 #include <vector>
@@ -18,4 +18,4 @@ extern std::vector<std::pair<uint64_t, uint64_t>> global_translation_ranges;
 extern "C" void* global_simulated_vector_contexts_pool;  // Continuous memory pool
 extern std::map<int, void*> global_thread_translated_handles;  // Translation library handles for each thread index
 
-#endif // GLOBALS_H
+#endif // RVMIG_GLOBALS_H

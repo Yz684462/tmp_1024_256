@@ -1,5 +1,5 @@
-#ifndef PATCH_H
-#define PATCH_H
+#ifndef RVMIG_PATCH_H
+#define RVMIG_PATCH_H
 
 #include <cstdint>
 #include <signal.h>
@@ -16,4 +16,4 @@ public:
     static void ebreak_handler(int sig, siginfo_t *info, void *context);
 };
 
-#endif // PATCH_H
+#endif // RVMIG_PATCH_H

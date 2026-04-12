@@ -1,4 +1,3 @@
-#include "main.h"
 #include "../include/addr.h"
 #include "../include/config.h"
 #include "../include/globals.h"
@@ -8,25 +7,7 @@
 #include <iostream>
 #include <signal.h>
 
-// Mock config variables for testing
-const char* config_migration_lib_name = "test_migration.so";
-const char* config_migration_func_name = "test_migration_func";
-const uint64_t config_migration_func_offset = 0x1000;
-
-// Mock global variables for testing
-void* global_migration_lib_handle = nullptr;
-uint64_t global_migration_lib_base_addr = 0;
-uint64_t global_migration_addr = 0;
-uint32_t global_migration_code = 0;
-void* global_migration_code_handle = nullptr;
-std::vector<uint64_t> global_patched_addrs;
-std::vector<std::pair<uint64_t, uint64_t>> global_translation_ranges;
-void* global_simulated_vector_contexts_pool = nullptr;
-std::map<int, void*> global_thread_translated_handles;
-
-// Constructor function that runs automatically when program loads
-__attribute__((constructor))
-void init() {    
+int main() {    
     std::cout << "[TEST] Starting initialization test..." << std::endl;
     
     // Load migration library
@@ -34,7 +15,7 @@ void init() {
     global_migration_lib_handle = dlopen(config_migration_lib_name, RTLD_LAZY);
     if (!global_migration_lib_handle) {
         std::cout << "[TEST] Warning: Could not load migration library" << std::endl;
-        return;
+        return 1;
     } else {
         std::cout << "[TEST] Successfully loaded migration library" << std::endl;
         
@@ -45,14 +26,14 @@ void init() {
             std::cout << "[TEST] Migration library base address: 0x" << std::hex << global_migration_lib_base_addr << std::dec << std::endl;
         } else {
             std::cout << "[TEST] Warning: Could not get library base address" << std::endl;
-            return;
+            return 1;
         }
         
         // Get migration address
         global_migration_addr = Addr::get_migration_addr(global_migration_lib_handle, config_migration_func_name, config_migration_func_offset);
         if (global_migration_addr == 0) {
             std::cout << "[TEST] Warning: Could not get migration address" << std::endl;
-            return;
+            return 1;
         }
     }
     
@@ -69,4 +50,6 @@ void init() {
     }
     
     std::cout << "[TEST] Initialization test completed!" << std::endl;
+    
+    return 0;
 }

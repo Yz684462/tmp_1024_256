@@ -1,5 +1,5 @@
-#ifndef ADDR_INIT_H
-#define ADDR_INIT_H
+#ifndef RVMIG_ADDR_INIT_H
+#define RVMIG_ADDR_INIT_H
 
 #include <r_core.h>
 #include <r_anal.h>
@@ -14,4 +14,4 @@ RAnalFunction* find_func(uint64_t addr, RCore *core);
 
 } // namespace AddrCore
 
-#endif // ADDR_INIT_H
+#endif // RVMIG_ADDR_INIT_H

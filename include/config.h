@@ -1,5 +1,5 @@
-#ifndef CONFIG_H
-#define CONFIG_H
+#ifndef RVMIG_CONFIG_H
+#define RVMIG_CONFIG_H
 
 // Configuration constants
 extern const char* config_migration_lib_name;
@@ -10,4 +10,4 @@ extern const uint64_t config_migration_func_offset;
 #define MAX_THREADS 64
 #define VECTOR_CONTEXT_SIZE 4192
 
-#endif // CONFIG_H
+#endif // RVMIG_CONFIG_H

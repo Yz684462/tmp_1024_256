@@ -1,15 +1,11 @@
-#ifndef ADDR_ANALYSIS_H
-#define ADDR_ANALYSIS_H
+#ifndef RVMIG_ADDR_ANALYSIS_H
+#define RVMIG_ADDR_ANALYSIS_H
 
 #include <cstdint>
 #include <vector>
-#include <string>
-#include <set>
 #include <map>
-
-// Forward declarations
-struct RAnalFunction;
-struct RAnalBlock;
+#include <string>
+#include <r_anal.h>
 
 // Source attribute enumeration
 enum class SourceAttrib {
@@ -74,4 +70,4 @@ bool is_vector_instruction(const std::string& mnemonic);
 
 } // namespace AddrAnalysis
 
-#endif // ADDR_ANALYSIS_H
+#endif // RVMIG_ADDR_ANALYSIS_H

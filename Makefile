@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -O2
+CXXFLAGS = -std=c++17 -Wall -O2 $(shell pkg-config --cflags r_core)
 INCLUDES = -Iinclude
 SRCDIR = src
 INCDIR = include
@@ -16,21 +16,24 @@ TARGET = framework
 
 # Test targets
 TEST_TARGET = test_addr
-TEST_SOURCES = $(TESTDIR)/test_addr.cpp $(SRCDIR)/addr.cpp $(SRCDIR)/addr_init.cpp $(SRCDIR)/addr_analysis.cpp
+TEST_SOURCES = $(TESTDIR)/test_addr.cpp $(SRCDIR)/addr.cpp $(SRCDIR)/addr_init.cpp $(SRCDIR)/addr_analysis.cpp $(SRCDIR)/config.cpp $(SRCDIR)/globals.cpp
 TEST_OBJECTS = $(TEST_SOURCES:.cpp=.o)
+
+# Link flags
+LDFLAGS = $(shell pkg-config --libs r_core) -ldl -lpthread
 
 .PHONY: all clean test test-run
 
 all: $(TARGET)
 
 $(TARGET): $(OBJECTS)
-	$(CXX) $(OBJECTS) -o $(TARGET) -ldl -lpthread
+	$(CXX) $(OBJECTS) -o $(TARGET) $(LDFLAGS)
 
 # Build test executable
 test: $(TEST_TARGET)
 
 $(TEST_TARGET): $(TEST_OBJECTS)
-	$(CXX) $(TEST_OBJECTS) -o $(TEST_TARGET) -ldl -lpthread
+	$(CXX) $(TEST_OBJECTS) -o $(TEST_TARGET) $(LDFLAGS)
 
 # Run test
 test-run: $(TEST_TARGET)
