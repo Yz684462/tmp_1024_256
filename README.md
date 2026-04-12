@@ -55,18 +55,15 @@ namespace AddrCore {
 }
 ```
 
-#### CFG 构建 (`addr_cfg.cpp/h`)
-```cpp
-namespace AddrCFG {
-    CFG* build_cfg(RAnalFunction *func, RCore *core);
-    void build_predecessor_relationships(CFG *cfg);
-}
-```
-
 #### 向量寄存器分析 (`addr_analysis.cpp/h`)
 ```cpp
 namespace AddrAnalysis {
-    std::vector<std::pair<uint64_t, uint64_t>> analyze_vector_register(uint64_t func_addr, CFG *cfg);
+    std::vector<std::pair<uint64_t, uint64_t>> analyze_vector_register(RAnalFunction *func);
+    // New algorithm functions
+    void init_sources_insts(RAnalFunction *func, std::vector<Source*>& sources, std::vector<VectorInst*>& insts);
+    void tag_sources(RAnalFunction *func, std::vector<Source*>& sources, std::vector<VectorInst*>& insts);
+    void judge_sources(std::vector<Source*>& sources, std::vector<VectorInst*>& insts);
+    std::vector<std::pair<uint64_t, uint64_t>> get_ranges(std::vector<Source*>& sources, std::vector<VectorInst*>& insts);
 }
 ```
 
@@ -211,7 +208,7 @@ make
 g++ -std=c++11 -I./include \
     -o migration_framework \
     src/main.cpp src/patch.cpp src/addr.cpp src/addr_init.cpp \
-    src/addr_cfg.cpp src/addr_analysis.cpp src/handle.cpp \
+    src/addr_analysis.cpp src/handle.cpp \
     src/vector_context.cpp src/config.cpp src/globals.cpp \
     -lr_core -lr_anal -ldl
 ```

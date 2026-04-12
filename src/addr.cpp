@@ -1,6 +1,5 @@
 #include "addr.h"
 #include "addr_init.h"
-#include "addr_cfg.h"
 #include "addr_analysis.h"
 #include "../include/globals.h"
 #include "../include/config.h"
@@ -42,18 +41,13 @@ std::vector<std::pair<uint64_t, uint64_t>> Addr::get_translation_ranges(uint64_t
         return std::vector<std::pair<uint64_t, uint64_t>>();
     }
     
-    // Get control flow graph from function, cut at migration address
-    CFG *cfg = AddrCFG::build_cfg(func, core, addr);
+    // Analyze vector register usage and get translation ranges using new algorithm
+    std::vector<std::pair<uint64_t, uint64_t>> ranges = AddrAnalysis::analyze_vector_register(func);
     
-    // Analyze vector register usage and get translation ranges
-    std::vector<std::pair<uint64_t, uint64_t>> ranges = AddrAnalysis::analyze_vector_register(cfg);
-    
-    // Cleanup CFG and core
-    delete cfg;
+    // Cleanup core
     r_core_free(core);
     
     printf("[ADDR] Translation ranges analysis completed\n");
-    printf("  CFG blocks: %zu\n", cfg->blocks.size());
     printf("  Translation ranges: %zu\n", ranges.size());
     
     return ranges;

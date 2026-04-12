@@ -4,6 +4,7 @@
 #include "../include/vector_context.h"
 #include "../include/addr.h"
 #include "../include/config.h"
+#include "../include/globals.h"
 #include <cstdlib>
 #include <string>
 #include <dlfcn.h>
@@ -12,16 +13,7 @@
 
 // Constructor function that runs automatically when program loads
 __attribute__((constructor))
-void init() {
-    // Set up signal handler for SIGTRAP
-    struct sigaction sa;
-    sa.sa_sigaction = Patch::ebreak_handler;
-    sa.sa_flags = SA_SIGINFO;
-    sigemptyset(&sa.sa_mask);
-    if (sigaction(SIGTRAP, &sa, NULL) != 0) {
-        return;
-    }
-
+void init() {    
     // Load migration library
     global_migration_lib_handle = dlopen(config_migration_lib_name, RTLD_LAZY);
     if (!global_migration_lib_handle) {
@@ -42,6 +34,21 @@ void init() {
         return;
     }
     
+    // Get translation ranges at initialization
+    global_translation_ranges = Addr::get_translation_ranges(global_migration_addr);
+    
+    // Set up signal handler for SIGTRAP
+    struct sigaction sa;
+    sa.sa_sigaction = Patch::ebreak_handler;
+    sa.sa_flags = SA_SIGINFO;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGTRAP, &sa, NULL) != 0) {
+        return;
+    }
+    
+    // Initialize vector context pool
+    VectorContext::initialize_vector_context_pool();
+    
     // Generate shared library for original instruction at migration address
     std::string inst_command = "python3 scripts/inst_to_so.py 0x" + std::to_string(global_migration_addr - global_migration_lib_base_addr);
     int inst_result = system(inst_command.c_str());
@@ -56,12 +63,6 @@ void init() {
         std::cerr << "Error loading migration code library: " << dlerror() << std::endl;
         return;
     }
-    
-    // Initialize vector context pool
-    VectorContext::initialize_vector_context_pool();
-    
-    // Get translation ranges at initialization
-    global_translation_ranges = Addr::get_translation_ranges(global_migration_addr);
     
     // Patch migration address
     Patch::patch(global_migration_addr, &global_migration_code);
