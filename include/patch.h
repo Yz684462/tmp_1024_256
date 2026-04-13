@@ -1,7 +1,7 @@
 #ifndef RVMIG_PATCH_H
 #define RVMIG_PATCH_H
 
-#include <cstdint>
+#include "common.h"
 #include <signal.h>
 
 class Patch {

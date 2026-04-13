@@ -1,10 +1,7 @@
 #ifndef RVMIG_GLOBALS_H
 #define RVMIG_GLOBALS_H
 
-#include <cstdint>
-#include <vector>
-#include <map>
-#include <thread>
+#include "common.h"
 #include "config.h"
 
 // Global variables

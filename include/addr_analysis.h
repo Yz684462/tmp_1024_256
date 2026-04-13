@@ -1,15 +1,7 @@
 #ifndef RVMIG_ADDR_ANALYSIS_H
 #define RVMIG_ADDR_ANALYSIS_H
 
-#include <cstdint>
-#include <vector>
-#include <map>
-#include <string>
-#include <algorithm>
-#include <stack>
-#include <set>
-#include <iostream>
-#include <unordered_set>
+#include "common.h"
 
 #include "globals.h"
 #include "config.h"

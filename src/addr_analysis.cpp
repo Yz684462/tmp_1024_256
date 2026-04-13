@@ -9,7 +9,7 @@ Instruction* initialize_instruction_pointer(CodeBlock* start_block, VectorInst* 
         instr_ptr++;
     }
     instr_ptr++;
-    current_addr = std::stoull(instr_ptr->address, nullptr, 16);
+    current_addr = instr_ptr->address;
     return instr_ptr;
 }
 
@@ -200,7 +200,7 @@ void propagate_source_through_blocks(Source* source, VectorInst* source_inst, Co
             
             // Move to next instruction
             if (current_addr >= block_end){
-                break
+                break;
             }
             instr_ptr++;
             current_addr = instr_ptr->address;

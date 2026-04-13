@@ -1,10 +1,7 @@
 #ifndef RVMIG_BINARY_H
 #define RVMIG_BINARY_H
 
-#include <string>
-#include <vector>
-#include <map>
-#include <utility>
+#include "common.h"
 
 // Instruction type definitions
 const std::vector<std::string> jmp_instr = {"j", "jal"};

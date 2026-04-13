@@ -1,6 +1,7 @@
 #ifndef RVMIG_HANDLE_H
 #define RVMIG_HANDLE_H
 
+#include "common.h"
 #include <ucontext.h>
 
 class Handle {

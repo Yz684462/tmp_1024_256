@@ -6,7 +6,6 @@
 #include <dlfcn.h>
 #include <iostream>
 #include <signal.h>
-#define _GNU_SOURCE
 #include <link.h>
 
 int main() {    

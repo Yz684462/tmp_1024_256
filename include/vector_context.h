@@ -1,9 +1,7 @@
 #ifndef RVMIG_VECTOR_CONTEXT_H
 #define RVMIG_VECTOR_CONTEXT_H
 
-#include <ucontext.h>
-#include <vector>
-#include <thread>
+#include "common.h"
 
 #define RISCV_V_MAGIC		0x53465457
 

@@ -1,8 +1,7 @@
 #ifndef RVMIG_THREAD_H
 #define RVMIG_THREAD_H
 
-#include <thread>
-#include <map>
+#include "common.h"
 #include "config.h"
 
 // Global variables for thread management

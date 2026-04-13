@@ -1,6 +1,7 @@
 #ifndef RVMIG_ADDR_H
 #define RVMIG_ADDR_H
 
+#include "common.h"
 #include "addr_analysis.h"
 #include "binary.h"
 #include "globals.h"
@@ -8,13 +9,6 @@
 
 #include <dlfcn.h>
 #include <cstdio>
-#include <cstdlib>
-#include <fstream>
-#include <sstream>
-#include <set>
-#include <cstdint>
-#include <vector>
-#include <string>
 
 namespace Addr {
 

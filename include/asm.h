@@ -1,6 +1,7 @@
 #ifndef RVMIG_ASM_H
 #define RVMIG_ASM_H
 
+#include "common.h"
 #include <ucontext.h>
 
 // Assembly macros for register context management
