@@ -2,16 +2,88 @@
 
 namespace AddrAnalysis {
 
+// Helper function to initialize instruction pointer and address
+Instruction* initialize_instruction_pointer(CodeBlock* start_block, VectorInst* source_inst, uint64_t& current_addr) {
+    Instruction* instr_ptr = start_block->instructions[0];
+    while(instr_ptr->address != source_inst->address) {
+        instr_ptr++;
+    }
+    instr_ptr++;
+    current_addr = std::stoull(instr_ptr->address, nullptr, 16);
+    return instr_ptr;
+}
+
+// Helper function to check if current address is a source instruction
+bool is_source_instruction_at_address(uint64_t current_addr, const std::vector<Source*>& sources) {
+    for (Source* other_source : sources) {
+        if (other_source->inst_addr == current_addr) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Helper function to tag vector instruction and update register sources
+void tag_vector_instruction(uint64_t current_addr, Source* source, 
+                         std::map<uint64_t, VectorInst*>& insts) {
+    auto vec_inst_it = insts.find(current_addr);
+    if (vec_inst_it != insts.end()) {
+        VectorInst* vec_inst = vec_inst_it->second;
+        
+        // Check if this instruction uses the target register
+        auto reg_it = vec_inst->reg_sources.find(source->target_reg);
+        if (reg_it != vec_inst->reg_sources.end()) {
+            // Set source to this register (overwrite if exists)
+            vec_inst->reg_sources[source->target_reg] = source;
+        }
+    }
+}
+
+// Helper function to find successor blocks and add to worklist
+void add_successor_blocks_to_worklist(CodeBlock* current_block, 
+                                     std::vector<CodeBlock*>& code_blocks,
+                                     std::stack<CodeBlock*>& worklist) {
+    for (const auto& jump_target : current_block->jumpto) {
+        // Find block with this start address
+        for (CodeBlock* block : code_blocks) {
+            if (block->startaddr == jump_target) {
+                worklist.push(block);
+                break;
+            }
+        }
+    }
+}
+
 bool is_vector_assignment(const std::string& mnemonic) {
-    // Check if instruction is a vector assignment (writes to vector register)
-    return mnemonic == "vlw.v" || 
-           mnemonic == "vsw.v" ||
-           mnemonic == "vmv.v.v" ||
-           mnemonic == "vadd.vv" ||
-           mnemonic == "vsub.vv" ||
-           mnemonic == "vmul.vv" ||
-           mnemonic == "vdiv.vv" ||
-           mnemonic == "vsetvli";
+    // RVV 中从非向量源写入向量寄存器的指令集合
+    static const std::unordered_set<std::string> vector_assignment_ops = {
+        // --- 1. 从内存加载到向量寄存器 (LOAD-FP opcode) ---
+        "vle8.v", "vle16.v", "vle32.v", "vle64.v",         // unit-stride load
+        "vlse8.v", "vlse16.v", "vlse32.v", "vlse64.v",     // strided load
+        "vid.v",
+
+        "vlm.v",                                           // mask load
+        "vlre8.v", "vlre16.v", "vlre32.v", "vlre64.v",     // whole register load
+
+        "vluxei8.v", "vluxei16.v", "vluxei32.v", "vluxei64.v",   // indexed unordered load
+        "vloxei8.v", "vloxei16.v", "vloxei32.v", "vloxei64.v",   // indexed ordered load
+
+        // fault-only-first variants (also loads)
+        "vl8ff.v", "vl16ff.v", "vl32ff.v", "vl64ff.v",
+
+        // segment loads (nf=2~8, example for nf=2)
+        "vl2e8.v", "vl2e16.v", "vl2e32.v", "vl2e64.v",
+        "vl4e8.v", "vl4e16.v", "vl4e32.v", "vl4e64.v",
+        "vl8e8.v", "vl8e16.v", "vl8e32.v", "vl8e64.v",
+
+        // --- 2. 从标量寄存器广播到向量寄存器 (OP-V opcode) ---
+        "vmv.v.x",   // vector = scalar register (broadcast)
+
+        // --- 3. 用立即数初始化向量寄存器 (OP-V opcode) ---
+        "vmv.v.i"    // vector = imm5 (-16 ~ 15)
+    };
+
+    return vector_assignment_ops.count(mnemonic) > 0;
 }
 
 bool is_vector_instruction(const std::string& mnemonic) {
@@ -19,7 +91,7 @@ bool is_vector_instruction(const std::string& mnemonic) {
     return mnemonic.find("v") == 0;
 }
 
-std::vector<int> parse_vector_operands(const std::string& operands) {
+std::vector<int> parse_vector_operands(const std::vector<std::string>& operands) {
     // Parse vector operands and extract register numbers
     std::vector<int> reg_nums;
     
@@ -27,18 +99,16 @@ std::vector<int> parse_vector_operands(const std::string& operands) {
         return reg_nums;
     }
     
-    std::stringstream ss(operands);
-    std::string operand;
-    
-    while (std::getline(ss, operand, ',')) {
+    for (const auto& operand : operands) {
         // Trim whitespace
-        operand.erase(0, operand.find_first_not_of(" \t"));
-        operand.erase(operand.find_last_not_of(" \t") + 1);
+        std::string trimmed = operand;
+        trimmed.erase(0, trimmed.find_first_not_of(" \t"));
+        trimmed.erase(trimmed.find_last_not_of(" \t") + 1);
         
         // Check if operand is a vector register
-        if (operand.find("v") == 0) {
+        if (trimmed.find("v") == 0) {
             try {
-                std::string reg_str = operand.substr(1);
+                std::string reg_str = trimmed.substr(1);
                 int reg_num = std::stoi(reg_str);
                 if (reg_num >= 0 && reg_num < 32) {
                     reg_nums.push_back(reg_num);
@@ -52,91 +122,12 @@ std::vector<int> parse_vector_operands(const std::string& operands) {
     return reg_nums;
 }
 
-void propagate_source_through_blocks(Source* source, VectorInst* source_inst, CodeBlock* start_block, 
-                                   std::vector<CodeBlock*>& code_blocks,
-                                   std::vector<Source*>& sources,
-                                   std::map<uint64_t, VectorInst*>& insts) {
-    // DFS traversal of basic blocks
-    std::stack<CodeBlock*> worklist;
-    std::set<uint64_t> visited;  // Track visited instruction addresses
-    worklist.push(start_block);
-    Instruction *instr_ptr = start_block->instructions[0];
-    while(instr_ptr->address != source_inst->address) {
-        instr_ptr++;
-    }
-    instr_ptr++;
-    uint64_t current_addr = std::stoull(instr_ptr->address, nullptr, 16);
-    while (!worklist.empty()) {
-        CodeBlock* current_block = worklist.top();
-        worklist.pop();
-        
-        if (current_addr != std::stoull(source_inst->address, nullptr, 16) + source_inst->inst_size) {
-            instr_ptr = current_block->instructions[0];
-            current_addr = std::stoull(instr_ptr->address, nullptr, 16);
-        }
-
-        if (visited.count(current_addr)) {
-            continue;
-        }
-        visited.insert(current_addr);
-
-        uint64_t block_end = std::stoull(current_block->endaddr, nullptr, 16);
-        bool path_ended_by_source = false;  // Flag to track if path ended due to source instruction
-        
-
-        while (current_addr < block_end) {
-            // Check if this instruction creates a new source (path ends)
-            bool is_source_instruction = false;
-            for (Source* other_source : sources) {
-                if (other_source->inst_addr == current_addr) {
-                    is_source_instruction = true;
-                    break;
-                }
-            }
-            // If this is a source instruction, don't access it and stop this path
-            if (is_source_instruction) {
-                path_ended_by_source = true;  // Set flag
-                break; // Stop scanning this path
-            }
-            
-            // Check if this instruction is in insts
-            auto vec_inst_it = insts.find(current_addr);
-            if (vec_inst_it != insts.end()) {
-                VectorInst* vec_inst = vec_inst_it->second;
-                
-                // Check if this instruction uses the target register
-                // Use reg_sources to see if this register is used in this instruction
-                auto reg_it = vec_inst->reg_sources.find(source->target_reg);
-                if (reg_it != vec_inst->reg_sources.end()) {
-                    // Set source to this register (overwrite if exists)
-                    vec_inst->reg_sources[source->target_reg] = source;
-                }
-            }
-            // Move to next instruction
-            instr_ptr++;
-            current_addr = std::stoull(instr_ptr->address, nullptr, 16);
-        }
-        
-        // Add successor blocks to worklist only if path didn't end due to source instruction
-        if (!path_ended_by_source) {
-            for (const auto& jump_target : current_block->jumpto) {
-                // Find block with this start address
-                for (CodeBlock* block : code_blocks) {
-                    if (block->startaddr == jump_target) {
-                        worklist.push(block);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-}
-
 void create_vector_instruction(Instruction* instr, const std::string& mnemonic, 
                                 CodeBlock* block, const std::vector<int>& reg_nums,
                                 std::vector<Source*>& sources, std::map<uint64_t, VectorInst*>& insts) {
     // Create vector instruction and handle source creation if needed
     VectorInst* vec_inst = new VectorInst(instr->address, instr->instrlen, mnemonic, block, reg_nums);
+    insts[instr->address] = vec_inst;
     if (is_vector_assignment(mnemonic)) {
         int target_reg = 0;
         if (!reg_nums.empty()) {
@@ -146,7 +137,6 @@ void create_vector_instruction(Instruction* instr, const std::string& mnemonic,
         sources.push_back(source);
         vec_inst->reg_sources[target_reg] = source;
     }
-    insts[instr->address] = vec_inst;
 }
 
 void init_sources_insts(std::vector<CodeBlock*>& code_blocks,
@@ -159,12 +149,70 @@ void init_sources_insts(std::vector<CodeBlock*>& code_blocks,
             std::string mnemonic = instr->opcode;
             
             if (is_vector_instruction(mnemonic)) {
-                std::vector<int> reg_nums = parse_vector_operands(instr->operand);
+                std::vector<int> reg_nums = parse_vector_operands(instr->operands);
                 create_vector_instruction(instr, mnemonic, block, reg_nums, sources, insts);
             }
         }
     }
 }
+
+void propagate_source_through_blocks(Source* source, VectorInst* source_inst, CodeBlock* start_block, 
+                                   std::vector<CodeBlock*>& code_blocks,
+                                   std::vector<Source*>& sources,
+                                   std::map<uint64_t, VectorInst*>& insts) {
+    // DFS traversal of basic blocks
+    std::stack<CodeBlock*> worklist;
+    std::set<uint64_t> visited;  // Track visited instruction addresses
+    worklist.push(start_block);
+    
+    // Initialize instruction pointer and address
+    uint64_t current_addr;
+    Instruction* instr_ptr = initialize_instruction_pointer(start_block, source_inst, current_addr);
+    
+    while (!worklist.empty()) {
+        CodeBlock* current_block = worklist.top();
+        worklist.pop();
+        
+        // Reset instruction pointer if we're in a new block
+        if (current_addr != source_inst->address + source_inst->size) {
+            instr_ptr = current_block->instructions[0];
+            current_addr = instr_ptr->address;
+        }
+
+        if (visited.count(current_addr)) {
+            continue;
+        }
+        visited.insert(current_addr);
+
+        uint64_t block_end = current_block->endaddr;
+        bool path_ended_by_source = false;  // Flag to track if path ended due to source instruction
+        
+        // Process instructions in current block
+        while (true) {
+            // Check if this instruction creates a new source (path ends)
+            if (is_source_instruction_at_address(current_addr, sources)) {
+                path_ended_by_source = true;
+                break;
+            }
+            
+            // Tag vector instruction and update register sources
+            tag_vector_instruction(current_addr, source, insts);
+            
+            // Move to next instruction
+            if (current_addr >= block_end){
+                break
+            }
+            instr_ptr++;
+            current_addr = instr_ptr->address;
+        }
+        
+        // Add successor blocks to worklist only if path didn't end due to source instruction
+        if (!path_ended_by_source) {
+            add_successor_blocks_to_worklist(current_block, code_blocks, worklist);
+        }
+    }
+}
+
 
 void tag_sources(std::vector<CodeBlock*>& code_blocks,
                 std::vector<Source*>& sources, 
@@ -212,6 +260,7 @@ void analyze_source_bit_width(std::map<uint64_t, VectorInst*>& insts) {
                         inner_reg_pair.second->attrib = SourceAttrib::BIT_1024;
                     }
                 }
+                return;
             }
         }
     }
@@ -227,6 +276,7 @@ void judge_sources(std::vector<Source*>& sources,
             break;
         }
     }
+    // 后面没有再把剩余的unknown标记成256，因为实际上不需要判断256，只判断1024
 }
 
 bool needs_translation(VectorInst* vec_inst) {
@@ -253,7 +303,7 @@ std::vector<std::pair<uint64_t, uint64_t>> group_consecutive_addresses(
     auto it = translation_addrs.begin();
     uint64_t range_start = *it;
     uint64_t prev_addr = *it;
-    uint64_t prev_end = prev_addr + insts[prev_addr]->inst_size;
+    uint64_t prev_end = prev_addr + insts[prev_addr]->size;
     ++it;
     
     for (; it != translation_addrs.end(); ++it) {
@@ -266,7 +316,7 @@ std::vector<std::pair<uint64_t, uint64_t>> group_consecutive_addresses(
         }
         
         prev_addr = current_addr;
-        prev_end = prev_addr + insts[prev_addr]->inst_size;
+        prev_end = prev_addr + insts[prev_addr]->size;
     }
     
     // Add the final range
@@ -284,7 +334,7 @@ std::vector<std::pair<uint64_t, uint64_t>> get_ranges(
     for (auto& pair : insts) {
         VectorInst* vec_inst = pair.second;
         if (needs_translation(vec_inst)) {
-            translation_addrs.insert(vec_inst->inst_addr);
+            translation_addrs.insert(vec_inst->address);
         }
     }
     

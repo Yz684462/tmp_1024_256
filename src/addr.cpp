@@ -14,12 +14,7 @@ uint64_t Addr::get_migration_addr(void* migration_handle, const char* migration_
 std::vector<std::pair<uint64_t, uint64_t>> Addr::get_translation_ranges(uint64_t addr) {
     printf("[ADDR] Getting translation ranges for address 0x%lx\n", addr);
     
-    // Convert address to string format
-    std::stringstream addr_ss;
-    addr_ss << "0x" << std::hex << addr;
-    std::string addr_str = addr_ss.str();
-    
-    Binary func_bin(config_migration_dump_path, addr_str);
+    Binary func_bin(config_migration_dump_path, addr);
     // Analyze vector register usage using new algorithm
     std::vector<std::pair<uint64_t, uint64_t>> ranges = AddrAnalysis::analyze_vector_register_binary(func_bin.code_blocks);
     

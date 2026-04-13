@@ -9,6 +9,8 @@
 #include <stack>
 #include <set>
 #include <iostream>
+#include <unordered_set>
+
 #include "globals.h"
 #include "config.h"
 #include "binary.h"
@@ -32,17 +34,21 @@ struct Source {
 
 // Vector instruction structure
 struct VectorInst {
-    uint64_t inst_addr;           // Instruction address
-    int inst_size;                // Instruction length
+    uint64_t address;             // Instruction address
+    int size;                    // Instruction length
     std::string mnemonic;          // Instruction mnemonic
     CodeBlock* parent_block;      // Parent basic block pointer
-    std::vector<int> operands;    // Register operands as numbers
     std::map<int, Source*> reg_sources;  // Register to source mapping
     
     VectorInst(uint64_t addr, int size, const std::string& mnemonic, 
                 CodeBlock* block, const std::vector<int>& regs)
-        : inst_addr(addr), inst_size(size), mnemonic(mnemonic), 
-          parent_block(block), operands(regs) {}
+        : address(addr), size(size), mnemonic(mnemonic), 
+          parent_block(block) {
+        // Initialize reg_sources with the provided registers
+        for (int reg : regs) {
+            reg_sources[reg] = nullptr;
+        }
+    }
 };
 
 namespace AddrAnalysis {
@@ -51,6 +57,19 @@ namespace AddrAnalysis {
 bool is_vector_assignment(const std::string& mnemonic);
 bool is_vector_instruction(const std::string& mnemonic);
 
+// Helper functions
+Instruction* initialize_instruction_pointer(CodeBlock* start_block, VectorInst* source_inst, uint64_t& current_addr);
+bool is_source_instruction_at_address(uint64_t current_addr, const std::vector<Source*>& sources);
+void tag_vector_instruction(uint64_t current_addr, Source* source, 
+                         std::map<uint64_t, VectorInst*>& insts);
+void add_successor_blocks_to_worklist(CodeBlock* current_block, 
+                                     std::vector<CodeBlock*>& code_blocks,
+                                     std::stack<CodeBlock*>& worklist);
+
+std::vector<int> parse_vector_operands(const std::vector<std::string>& operands);
+void create_vector_instruction(Instruction* instr, const std::string& mnemonic, 
+                                CodeBlock* block, const std::vector<int>& reg_nums,
+                                std::vector<Source*>& sources, std::map<uint64_t, VectorInst*>& insts);
 void init_sources_insts(std::vector<CodeBlock*>& code_blocks,
                        std::vector<Source*>& sources, 
                        std::map<uint64_t, VectorInst*>& insts);
@@ -59,13 +78,17 @@ void tag_sources(std::vector<CodeBlock*>& code_blocks,
                 std::vector<Source*>& sources, 
                 std::map<uint64_t, VectorInst*>& insts);
 
+int count_unknown_sources(std::vector<Source*>& sources);
+void analyze_source_bit_width(std::map<uint64_t, VectorInst*>& insts);
 void judge_sources(std::vector<Source*>& sources, 
                  std::map<uint64_t, VectorInst*>& insts);
+bool needs_translation(VectorInst* vec_inst);
 
 std::vector<std::pair<uint64_t, uint64_t>> get_ranges(
     std::vector<Source*>& sources, 
     std::map<uint64_t, VectorInst*>& insts);
 
+// Core function
 std::vector<std::pair<uint64_t, uint64_t>> analyze_vector_register_binary(std::vector<CodeBlock*>& code_blocks);
 
 } // namespace AddrAnalysis
