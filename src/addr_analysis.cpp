@@ -4,18 +4,12 @@ namespace AddrAnalysis {
 
 // Helper function to initialize instruction pointer and address
 Instruction* initialize_instruction_pointer(CodeBlock* start_block, VectorInst* source_inst, uint64_t& current_addr) {
-    std::cout << "[DEBUG][initialize_instruction_pointer] start_block startaddr=0x" << std::hex << start_block->startaddr 
-              << ", source_inst address=0x" << source_inst->address << std::dec << std::endl;
     
     // Find the instruction with source_inst->address using index traversal
     size_t source_idx = 0;
     bool found = false;
     
     for (size_t i = 0; i < start_block->instructions.size(); i++) {
-        std::cout << "[DEBUG][initialize_instruction_pointer] Checking instruction " << i << " at 0x" 
-                  << std::hex << start_block->instructions[i]->address << " vs target 0x" 
-                  << source_inst->address << std::dec << std::endl;
-        
         if (start_block->instructions[i]->address == source_inst->address) {
             source_idx = i;
             found = true;
@@ -39,16 +33,21 @@ Instruction* initialize_instruction_pointer(CodeBlock* start_block, VectorInst* 
     Instruction* instr_ptr = start_block->instructions[source_idx + 1];
     current_addr = instr_ptr->address;
     
-    std::cout << "[DEBUG][initialize_instruction_pointer] current_addr=0x" << std::hex << current_addr << std::dec << std::endl;
+    std::cout << "[DEBUG][initialize_instruction_pointer] current_addr=0x" << std::hex << current_addr << std::dec <<std::endl;
     return instr_ptr;
 }
 
-// Helper function to check if current address is a source instruction
-bool is_source_instruction_at_address(uint64_t current_addr, const std::vector<Source*>& sources) {
+// Helper function to check if current address is a source instruction with matching target_reg
+bool is_matching_source_instruction_at_address(uint64_t current_addr, const std::vector<Source*>& sources, Source* current_source) {
     for (Source* other_source : sources) {
         if (other_source->inst_addr == current_addr) {
-            std::cout << "[DEBUG][is_source_instruction_at_address] Found source instruction at address 0x" << std::hex << current_addr << std::dec << std::endl;
-            return true;
+            // Check if the target_reg matches the current source's target_reg
+            if (other_source->target_reg == current_source->target_reg) {
+                return true;
+            }
+            else {
+                return false;
+            }
         }
     }
     return false;
@@ -61,7 +60,7 @@ void tag_vector_instruction(uint64_t current_addr, Source* source,
     if (vec_inst_it != insts.end()) {
         VectorInst* vec_inst = vec_inst_it->second;
         
-        std::cout << "[DEBUG][tag_vector_instruction] Found vector instruction at 0x" << std::hex << current_addr 
+        std::cout << "\t[DEBUG][tag_vector_instruction] Found vector instruction at 0x" << std::hex << current_addr 
                   << ", mnemonic=" << vec_inst->mnemonic << ", target_reg=" << source->target_reg << std::dec << std::endl;
         
         // Check if this instruction uses the target register
@@ -69,13 +68,11 @@ void tag_vector_instruction(uint64_t current_addr, Source* source,
         if (reg_it != vec_inst->reg_sources.end()) {
             // Set source to this register (overwrite if exists)
             vec_inst->reg_sources[source->target_reg] = source;
-            std::cout << "[DEBUG][tag_vector_instruction] Successfully tagged register v" << source->target_reg << " with source at 0x" 
+            std::cout << "\t[DEBUG][tag_vector_instruction] Successfully tagged register v" << source->target_reg << " with source at 0x" 
                       << std::hex << source->inst_addr << std::dec << std::endl;
         } else {
-            std::cout << "[DEBUG][tag_vector_instruction] Register v" << source->target_reg << " not used in this instruction" << std::endl;
+            std::cout << "\t[DEBUG][tag_vector_instruction] Register v" << source->target_reg << " not used in this instruction" << std::endl;
         }
-    } else {
-        std::cout << "[DEBUG][tag_vector_instruction] No vector instruction found at address 0x" << std::hex << current_addr << std::dec << std::endl;
     }
 }
 
@@ -83,18 +80,12 @@ void tag_vector_instruction(uint64_t current_addr, Source* source,
 void add_successor_blocks_to_worklist(CodeBlock* current_block, 
                                      std::vector<CodeBlock*>& code_blocks,
                                      std::stack<CodeBlock*>& worklist) {
-    std::cout << "[DEBUG][add_successor_blocks_to_worklist] Current block 0x" << std::hex << current_block->startaddr 
-              << " has " << current_block->jumpto.size() << " jump targets:" << std::dec << std::endl;
-    
     for (const auto& jump_target : current_block->jumpto) {
-        std::cout << "[DEBUG][add_successor_blocks_to_worklist]   Looking for target block at 0x" << std::hex << jump_target << std::dec << std::endl;
         
         // Find block with this start address
         bool found = false;
         for (CodeBlock* block : code_blocks) {
             if (block->startaddr == jump_target) {
-                std::cout << "[DEBUG][add_successor_blocks_to_worklist]   Found target block 0x" << std::hex 
-                          << block->startaddr << " - 0x" << block->endaddr << std::dec << std::endl;
                 worklist.push(block);
                 found = true;
                 break;
@@ -106,8 +97,6 @@ void add_successor_blocks_to_worklist(CodeBlock* current_block,
                       << std::hex << jump_target << std::dec << std::endl;
         }
     }
-    
-    std::cout << "[DEBUG][add_successor_blocks_to_worklist] Worklist now has " << worklist.size() << " blocks" << std::endl;
 }
 
 bool is_vector_assignment(const std::string& mnemonic) {
@@ -132,9 +121,11 @@ bool is_vector_assignment(const std::string& mnemonic) {
         "vl4e8.v", "vl4e16.v", "vl4e32.v", "vl4e64.v",
         "vl8e8.v", "vl8e16.v", "vl8e32.v", "vl8e64.v",
 
+        "vl2re32.v","vl1re64.v",
+
         // --- 2. 从标量寄存器广播到向量寄存器 (OP-V opcode) ---
         "vmv.v.x",   // vector = scalar register (broadcast)
-
+        "vfmv.s.f",
         // --- 3. 用立即数初始化向量寄存器 (OP-V opcode) ---
         "vmv.v.i"    // vector = imm5 (-16 ~ 15)
     };
@@ -181,17 +172,10 @@ std::vector<int> parse_vector_operands(const std::vector<std::string>& operands)
 void create_vector_instruction(Instruction* instr, const std::string& mnemonic, 
                                 CodeBlock* block, const std::vector<int>& reg_nums,
                                 std::vector<Source*>& sources, std::map<uint64_t, VectorInst*>& insts) {
-    std::cout << "[DEBUG][create_vector_instruction] " << mnemonic << " at 0x" << std::hex << instr->address 
-              << ", size=" << instr->instrlen << std::dec << std::endl;
-    
     // Create vector instruction and handle source creation if needed
     VectorInst* vec_inst = new VectorInst(instr->address, instr->instrlen, mnemonic, block, reg_nums);
     insts[instr->address] = vec_inst;
     
-    std::cout << "[DEBUG][create_vector_instruction] Created vector instruction with " << reg_nums.size() << " registers: ";
-    for (int reg : reg_nums) {
-        std::cout << "v" << reg << " ";
-    }
     std::cout << std::endl;
     
     if (is_vector_assignment(mnemonic)) {
@@ -199,16 +183,12 @@ void create_vector_instruction(Instruction* instr, const std::string& mnemonic,
         if (!reg_nums.empty()) {
             target_reg = reg_nums[0];
         }
-        std::cout << "[DEBUG][create_vector_instruction] This is a vector assignment, creating source for register v" << target_reg << std::endl;
-        
         Source* source = new Source(instr->address, target_reg);
         sources.push_back(source);
         vec_inst->reg_sources[target_reg] = source;
         
         std::cout << "[DEBUG][create_vector_instruction] Created source at 0x" << std::hex << instr->address << " for register v" 
                   << target_reg << std::dec << std::endl;
-    } else {
-        std::cout << "[DEBUG][create_vector_instruction] This is not a vector assignment, no source created" << std::endl;
     }
 }
 
@@ -232,7 +212,7 @@ void init_sources_insts(std::vector<CodeBlock*>& code_blocks,
         }
     }
     
-    std::cout << "[DEBUG][init_sources_insts] Created " << sources.size() << " sources and " << insts.size() << " vector instructions" << std::endl;
+    std::cout << "[DEBUG][init_sources_insts] Created " << sources.size() << " sources and " << insts.size() << " vector instructions\n\n\n" << std::endl;
 }
 
 void propagate_source_through_blocks(Source* source, VectorInst* source_inst, CodeBlock* start_block, 
@@ -300,12 +280,9 @@ void propagate_source_through_blocks(Source* source, VectorInst* source_inst, Co
         for (size_t i = start_idx; i < current_block->instructions.size(); i++) {
             Instruction* instr = current_block->instructions[i];
             current_addr = instr->address;
-            
-            std::cout << "[DEBUG][propagate_source_through_blocks] Processing instruction " << i << " at 0x" << std::hex << current_addr << std::dec << std::endl;
-            
+
             // Check if this instruction creates a new source (path ends)
-            if (is_source_instruction_at_address(current_addr, sources)) {
-                std::cout << "[DEBUG][propagate_source_through_blocks] Path ended by source instruction at 0x" << std::hex << current_addr << std::dec << std::endl;
+            if (is_matching_source_instruction_at_address(current_addr, sources, source)) {
                 path_ended_by_source = true;
                 break;
             }
@@ -315,28 +292,26 @@ void propagate_source_through_blocks(Source* source, VectorInst* source_inst, Co
             
             // Move to next instruction - loop will handle it
             if (i + 1 >= current_block->instructions.size()) {
-                std::cout << "[DEBUG][propagate_source_through_blocks] Reached end of block at 0x" << std::hex << current_addr << std::dec << std::endl;
                 break;
             }
         }
         
         // Add successor blocks to worklist only if path didn't end due to source instruction
         if (!path_ended_by_source) {
-            std::cout << "[DEBUG][propagate_source_through_blocks] Adding successor blocks to worklist" << std::endl;
             add_successor_blocks_to_worklist(current_block, code_blocks, worklist);
         } else {
             std::cout << "[DEBUG][propagate_source_through_blocks] Path ended, not adding successors" << std::endl;
         }
     }
     
-    std::cout << "[DEBUG][propagate_source_through_blocks] Completed processing " << block_count << " blocks" << std::endl;
+    std::cout << "[DEBUG][propagate_source_through_blocks] Completed processing " << block_count << " blocks\n" << std::endl;
 }
 
 
 void tag_sources(std::vector<CodeBlock*>& code_blocks,
                 std::vector<Source*>& sources, 
                 std::map<uint64_t, VectorInst*>& insts) {
-    std::cout << "[DEBUG][tag_sources] Processing " << sources.size() << " sources" << std::endl;
+    std::cout << "[DEBUG][tag_sources] Processing " << sources.size() << " sources\n" << std::endl;
     
     for (Source* source : sources) {
         std::cout << "[DEBUG][tag_sources] Processing source at 0x" << std::hex << source->inst_addr 
@@ -360,7 +335,7 @@ void tag_sources(std::vector<CodeBlock*>& code_blocks,
         propagate_source_through_blocks(source, source_inst, source_block, code_blocks, sources, insts);
     }
     
-    std::cout << "[DEBUG][tag_sources] Completed processing all sources" << std::endl;
+    std::cout << "[DEBUG][tag_sources] Completed processing all sources\n\n\n" << std::endl;
 }
 
 int count_unknown_sources(std::vector<Source*>& sources) {
@@ -386,11 +361,14 @@ void analyze_source_bit_width(std::map<uint64_t, VectorInst*>& insts) {
             bool has_empty_or_1024 = false;
             if(reg_source == nullptr || reg_source->attrib == SourceAttrib::BIT_1024) {
                 has_empty_or_1024 = true;
+                std::cout << "[DEBUG][analyze_source_bit_width] inst at " << std::hex << vec_inst->address << std::dec << " has empty or 1024 reg " << reg_pair.first << std::endl;
             }
             
             if(has_empty_or_1024){
                 for (auto& inner_reg_pair : vec_inst->reg_sources) {
                     if (inner_reg_pair.second) {
+                        std::cout << "[DEBUG][analyze_source_bit_width] Setting source at 0x" << std::hex << inner_reg_pair.second->inst_addr 
+                                  << " to BIT_1024" << std::dec << std::endl;
                         inner_reg_pair.second->attrib = SourceAttrib::BIT_1024;
                     }
                 }
@@ -411,6 +389,7 @@ void judge_sources(std::vector<Source*>& sources,
         }
     }
     // 后面没有再把剩余的unknown标记成256，因为实际上不需要判断256，只判断1024
+    std::cout << "[DEBUG][judge_sources] Completed processing all sources\n\n\n" << std::endl;
 }
 
 bool needs_translation(VectorInst* vec_inst) {
@@ -418,6 +397,12 @@ bool needs_translation(VectorInst* vec_inst) {
     for (auto& reg_pair : vec_inst->reg_sources) {
         Source* source = reg_pair.second;
         if (source == nullptr || (source && source->attrib == SourceAttrib::BIT_1024)) {
+            if (source){
+                std::cout << "[DEBUG][needs_translation] inst at " << std::hex << vec_inst->address << std::dec << " needs translation, source at 0x" << std::hex << source->inst_addr << std::dec << " reg is " << reg_pair.first << std::endl;
+            }
+            else{
+                std::cout << "[DEBUG][needs_translation] inst at " << std::hex << vec_inst->address << std::dec << " needs translation, source is null, reg is " << reg_pair.first << std::endl;
+            }
             return true;
         }
     }
@@ -472,35 +457,13 @@ std::vector<std::pair<uint64_t, uint64_t>> get_ranges(
         }
     }
     
-    return group_consecutive_addresses(translation_addrs, insts);
+    auto ranges = group_consecutive_addresses(translation_addrs, insts);
+    std::cout << "[DEBUG][get_ranges] Generated " << ranges.size() << " translation ranges\n\n\n" << std::endl;
+    return ranges;
 }
 
 std::vector<std::pair<uint64_t, uint64_t>> analyze_vector_register_binary(std::vector<CodeBlock*>& code_blocks) {
     std::cout << "[DEBUG][analyze_vector_register_binary] Starting analysis with " << code_blocks.size() << " code blocks" << std::endl;
-    
-    // Print all instructions in code_blocks for debugging
-    std::cout << "[DEBUG][analyze_vector_register_binary] === Printing all instructions in code_blocks ===" << std::endl;
-    for (size_t block_idx = 0; block_idx < code_blocks.size(); block_idx++) {
-        CodeBlock* block = code_blocks[block_idx];
-        std::cout << "[DEBUG][analyze_vector_register_binary] Block " << block_idx << " (0x" << std::hex 
-                  << block->startaddr << " - 0x" << block->endaddr << std::dec << ") has " 
-                  << block->instructions.size() << " instructions:" << std::endl;
-        
-        for (size_t instr_idx = 0; instr_idx < block->instructions.size(); instr_idx++) {
-            Instruction* instr = block->instructions[instr_idx];
-            // Convert operands vector to string for display
-            std::string operand_str;
-            for (size_t i = 0; i < instr->operands.size(); i++) {
-                if (i > 0) operand_str += ", ";
-                operand_str += instr->operands[i];
-            }
-            
-            std::cout << "[DEBUG][analyze_vector_register_binary]   Instr " << instr_idx << ": 0x" << std::hex 
-                      << instr->address << " " << instr->opcode << " " << operand_str
-                      << " (len=" << instr->instrlen << ")" << std::dec << std::endl;
-        }
-    }
-    std::cout << "[DEBUG][analyze_vector_register_binary] === End of code_blocks instructions ===" << std::endl;
     
     // Main analysis function using binary-based algorithm
     if (code_blocks.empty()) {

@@ -118,9 +118,6 @@ void addjumpto_target(Instruction* instr) {
         }
         uint64_t addr = std::stoull(target, nullptr, 16);
         instr->jumpto.push_back(addr);
-        
-        std::cout << "[DEBUG][addjumpto_target] Jump instruction " << instr->opcode 
-                  << " at 0x" << std::hex << instr->address << " -> 0x" << addr << std::dec << std::endl;
     } 
     else if (contains(branch_instr, instr->opcode)) {
         target = instr->operands.back();
@@ -136,9 +133,6 @@ void addjumpto_target(Instruction* instr) {
         uint64_t next_instr_addr = instr->address + instr->instrlen; 
         instr->jumpto.push_back(next_instr_addr);
         
-        std::cout << "[DEBUG][addjumpto_target] Branch instruction " << instr->opcode 
-                  << " at 0x" << std::hex << instr->address << " -> 0x" << branch_addr 
-                  << " and next 0x" << next_instr_addr << std::dec << std::endl;
     }
     else if(!contains(jmp_indirect_instr, instr->opcode) && 
             !contains(return_instr, instr->opcode) && 
@@ -147,9 +141,6 @@ void addjumpto_target(Instruction* instr) {
         uint64_t next_instr_addr = instr->address + instr->instrlen;
         instr->jumpto.push_back(next_instr_addr);
         
-        std::cout << "[DEBUG][addjumpto_target] Regular instruction " << instr->opcode 
-                  << " at 0x" << std::hex << instr->address << " -> next 0x" 
-                  << next_instr_addr << std::dec << std::endl;
     }
 }
 

@@ -4,6 +4,7 @@ uint64_t Addr::get_migration_addr(void* migration_handle, const char* migration_
     // Use dlsym to find function address
     void* func_addr = dlsym(migration_handle, migration_func_name);
     if (!func_addr) {
+        std::cerr << "Failed to find function: " << migration_func_name << std::endl;
         return 0;
     }
     
@@ -14,7 +15,7 @@ uint64_t Addr::get_migration_addr(void* migration_handle, const char* migration_
 std::vector<std::pair<uint64_t, uint64_t>> Addr::get_translation_ranges(uint64_t addr) {
     printf("[ADDR] Getting translation ranges for address 0x%lx\n", addr);
     
-    Binary func_bin(config_migration_dump_path, addr);
+    Binary func_bin(config_migration_dump_path, addr - global_migration_lib_base_addr );
     // Analyze vector register usage using new algorithm
     std::vector<std::pair<uint64_t, uint64_t>> ranges = AddrAnalysis::analyze_vector_register_binary(func_bin.code_blocks);
     
