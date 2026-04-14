@@ -13,9 +13,9 @@
 namespace Addr {
 
 // Function declarations
-uint64_t get_migration_addr(void* migration_handle, const char* migration_func_name, uint64_t migration_offset);
+void init_migration(const char* migration_lib_name, const char* migration_func_name, uint64_t migration_offset);
 
-std::vector<std::pair<uint64_t, uint64_t>> get_translation_ranges(uint64_t addr);
+void init_translation_ranges(uint64_t addr);
 
 uint64_t get_translation_range_end(uint64_t translation_range_begin);
 

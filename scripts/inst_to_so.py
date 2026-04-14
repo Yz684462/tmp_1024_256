@@ -14,9 +14,6 @@ from typing import List
 # Import assembly utilities
 from assembly_utils import extract_lines_in_range, compile_to_shared_library
 
-# Constants
-DUMP_FILE = "dump.s"
-
 
 def extract_4bytes_content(dump_lines: List[str], target_addr: int) -> str:
     """Extract 4 bytes of content at specified address."""
@@ -42,9 +39,8 @@ def extract_4bytes_content(dump_lines: List[str], target_addr: int) -> str:
     return content
 
 
-def wrap_content_in_function(content: str, addr: int) -> str:
+def wrap_content_in_function(content: str, func_name: str) -> str:
     """Wrap 4 bytes of content into an assembly function."""
-    func_name = f"content_func_{addr:x}"
     
     # Create assembly function wrapper
     asm_content = f"""\
@@ -61,37 +57,41 @@ def wrap_content_in_function(content: str, addr: int) -> str:
     return asm_content
 
 
-def parse_arguments() -> int:
+def parse_arguments() -> tuple[str, int, str, str]:
     """Parse command line arguments."""
-    if len(sys.argv) != 2:
-        print("Usage: python inst_to_so.py <address>")
+    if len(sys.argv) != 5:
+        print("Usage: python inst_to_so.py <dump_file> <address> <func_name> <output_file>")
         print("Address can be decimal or hexadecimal (e.g., 4096 or 0x1000)")
+        print("Example: python inst_to_so.py dump.s 0x1000 migration_func migration_code")
         sys.exit(1)
     
     try:
-        # Support both decimal and hexadecimal formats
-        addr = int(sys.argv[1], 0)  # auto-detect base (0=auto)
-    except ValueError:
-        print(f"Error: Invalid address value: {sys.argv[1]}")
-        print("Use decimal (4096) or hexadecimal (0x1000) format")
+        dump_file = sys.argv[1]
+        address = int(sys.argv[2], 0)  # Supports both decimal and hex
+        func_name = sys.argv[3]
+        output_file = sys.argv[4]
+    except ValueError as e:
+        print(f"Error: Invalid address '{sys.argv[2]}'. Must be a valid integer.")
         sys.exit(1)
     
-    return addr
+    return dump_file, address, func_name, output_file
 
 
 def main():
     """Main conversion function."""
     # Parse arguments
-    target_addr = parse_arguments()
+    dump_file, target_addr, func_name, output_file = parse_arguments()
     
     print(f"Processing 4 bytes at address: {target_addr} (0x{target_addr:x})")
+    print(f"Function name: {func_name}")
+    print(f"Output file: {output_file}")
     
     # Read dump file
-    if not os.path.isfile(DUMP_FILE):
-        print(f"Error: File not found - {DUMP_FILE}", file=sys.stderr)
+    if not os.path.isfile(dump_file):
+        print(f"Error: File not found - {dump_file}", file=sys.stderr)
         sys.exit(1)
     
-    with open(DUMP_FILE, 'r', encoding='utf-8') as f:
+    with open(dump_file, 'r', encoding='utf-8') as f:
         dump_lines = f.readlines()
     
     # Extract 4 bytes of content at target address
@@ -100,15 +100,14 @@ def main():
         sys.exit(1)
     
     # Wrap content in assembly function
-    asm_content = wrap_content_in_function(content, target_addr)
+    asm_content = wrap_content_in_function(content, func_name)
     print(f"Generated assembly function:\n{asm_content}")
     
     # Compile to shared library using utility function
-    output_file = f"content_{target_addr:x}"
     compiled_lib = compile_to_shared_library(asm_content, output_file)
     
     print(f"\nSuccessfully compiled: {compiled_lib}")
-    print(f"Function name: content_func_{target_addr:x}")
+    print(f"Function name: {func_name}")
 
 
 if __name__ == "__main__":

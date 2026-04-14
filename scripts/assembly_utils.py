@@ -7,6 +7,7 @@ Contains helper functions for extracting assembly ranges and compiling to shared
 import os
 import subprocess
 import sys
+import tempfile
 from typing import List
 
 
@@ -34,17 +35,18 @@ def extract_lines_in_range(dump_lines: List[str], start_addr: int, end_addr: int
 
 def compile_to_shared_library(asm_content: str, output_file:str) -> str:
     """Compile translated assembly to shared library."""
-    # Write combined assembly to file
-    translated_file = "translate.s"
-    with open(translated_file, 'w', encoding='utf-8') as f:
-        f.write(asm_content)
+    
+    # Create temporary file for assembly content
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.s', delete=False) as temp_file:
+        translated_file = temp_file.name
+        temp_file.write(asm_content)
     
     print(f"Combined translated assembly written to {translated_file}")
     
     # Compile to shared library
     compile_cmd = [
         "gcc",
-        "-march=rv64gcv_zba",
+        "-march=rv64gcv",
         translated_file,
         "-shared",
         "-fPIC",

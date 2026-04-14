@@ -10,6 +10,7 @@ extern uint64_t global_migration_lib_base_addr;  // Migration library base addre
 extern uint64_t global_migration_addr;
 extern uint32_t global_migration_code;  // Original code at migration address
 extern void* global_migration_code_handle;  // Handle for migration code shared library
+extern const std::string global_migration_original_code_func_name;  // Migration original code function name
 extern std::vector<uint64_t> global_patched_addrs;
 extern std::vector<std::pair<uint64_t, uint64_t>> global_translation_ranges;
 extern "C" void* global_simulated_vector_contexts_pool;  // Continuous memory pool
