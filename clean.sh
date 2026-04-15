@@ -1,0 +1,1 @@
+rm  demo_outside demo_outside_dump.s extracted.s translate.s translate_part1.so translate_part2.so inject_lib.so
