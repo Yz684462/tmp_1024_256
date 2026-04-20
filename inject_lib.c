@@ -12,6 +12,7 @@
 #include <pthread.h>
 #include <linux/ptrace.h>
 #include <string.h>
+#include "patch.h"
 #define RISCV_V_MAGIC		0x53465457
 
 // --- Configuration Macros ---
@@ -357,8 +358,8 @@ void patch_code(uintptr_t addr) {
         original_ins_d = ins_ptr[0];
     } 
     
-    // 修改成ebreak
-    ins_ptr[0] = 0x00100073; // EBREAK
+    // // 修改成ebreak
+    // ins_ptr[0] = 0x00100073; // EBREAK
     
     __builtin___clear_cache((char*)addr, (char*)addr + 4);
     if (addr == patch_point_a) {
@@ -460,8 +461,11 @@ int init_inject(int argc, char* argv[]) {
     printf("  D: 0x%lx\n", patch_point_d);
 
 
-    // 在构造函数中给 A 点打上 EBREAK
     patch_code(patch_point_a);
+    
+    patch_code_map(patch_point_a);
+    patch_code_map(patch_point_b);
+    patch_code_map(patch_point_d);
     printf("[INJECTOR] Successfully patched code at A with EBREAK.\n");
 
     //query_cpu();
