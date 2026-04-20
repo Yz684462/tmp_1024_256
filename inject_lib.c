@@ -175,7 +175,7 @@ void b_handle(ucontext_t *uc, void* translated_handle,const char* func_name,cons
     // LOAD(a5, 15);
     // LOAD(a6, 16);
     // LOAD(a7, 17);
-    LOAD(s0, 8);
+    // LOAD(s0, 8);
     LOAD(s1, 9);
     // LOAD(s2, 18);
     // LOAD(s3, 19);
@@ -199,7 +199,7 @@ void b_handle(ucontext_t *uc, void* translated_handle,const char* func_name,cons
     // STORE(a5, 15);
     // STORE(a6, 16);
     // STORE(a7, 17);
-    STORE(s0, 8);
+    // STORE(s0, 8);
     STORE(s1, 9);
     // STORE(s2, 18);
     // STORE(s3, 19);
