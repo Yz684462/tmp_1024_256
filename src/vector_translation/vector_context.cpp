@@ -1,14 +1,40 @@
-#include "vector_context.h"
-#include "../include/globals.h"
-#include "../include/config.h"
+#include "vector_translation.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <linux/ptrace.h>
 
-#define RISCV_V_MAGIC		0x53465457
+#define RISCV_V_MAGIC	0x53465457
+#define MAX_THREADS 64
+#define VECTOR_CONTEXT_SIZE 4192
 
-struct __riscv_v_ext_state* VectorContext::get_os_vector_context(ucontext_t *uc) {
+namespace BinaryTranslation {
+namespace VectorContext {
+
+VectorContextManager::VectorContextManager() {
+    if (vc_pool_ == nullptr) {
+        // Allocate continuous memory pool for all vector contexts
+        size_t pool_size = MAX_THREADS * VECTOR_CONTEXT_SIZE;
+        vc_pool_ = malloc(pool_size);
+        if (!vc_pool_) {
+            fprintf(stderr, "Failed to allocate vector context pool\n");
+            abort();
+        }
+    }
+}
+
+VectorContextManager::~VectorContextManager() {
+    if (vc_pool_) {
+        free(vc_pool_);
+    }
+}
+
+VectorContextManager& VectorContextManager::getInstance() {
+    static VectorContextManager instance;
+    return instance;
+}
+
+struct __riscv_v_ext_state* VectorContextManager::get_os_vector_context(ucontext_t *uc) {
     struct __riscv_extra_ext_header *ext;
     struct __riscv_v_ext_state *v_ext_state;
     
@@ -22,26 +48,17 @@ struct __riscv_v_ext_state* VectorContext::get_os_vector_context(ucontext_t *uc)
     return v_ext_state;
 }
 
-void VectorContext::initialize_vector_context_pool() {
-    if (global_simulated_vector_contexts_pool == nullptr) {
-        // Allocate continuous memory pool for all vector contexts
-        size_t pool_size = MAX_THREADS * VECTOR_CONTEXT_SIZE;
-        global_simulated_vector_contexts_pool = malloc(pool_size);
-        if (!global_simulated_vector_contexts_pool) {
-            fprintf(stderr, "Failed to allocate vector context pool\n");
-            abort();
-        }
-    }
-}
+void VectorContextManager::copy_uc_to_vc(ucontext_t *uc, int translation_id, uint32_t uc_mask) {
+    // Get OS vector context
+    struct __riscv_v_ext_state* os_vector_context = get_os_vector_context(uc);
+    
+    // Save OS vector context to simulated context
+    void* simulated_context = (char*)vc_pool_ + translation_id * VECTOR_CONTEXT_SIZE;
 
-void VectorContext::save_os_vector_context_to_simulated_vector_context(struct __riscv_v_ext_state *os_vector_context, int thread_index) {
-    // Calculate the address of this thread's vector context
-    void* simulated_context = (char*)global_simulated_vector_contexts_pool + thread_index * VECTOR_CONTEXT_SIZE;
-
-        // Save vector state
+    // Save vector state
     *(uint64_t*)(simulated_context + 0x1000) = (uint64_t)os_vector_context->vstart;
-        //vxsat not handled
-        //vxrm not handled
+    //vxsat not handled
+    //vxrm not handled
     *(uint64_t*)(simulated_context + 0x1018) = (uint64_t)os_vector_context->vcsr;
     *(uint64_t*)(simulated_context + 0x1020) = (uint64_t)os_vector_context->vl;
     *(uint64_t*)(simulated_context + 0x1028) = (uint64_t)os_vector_context->vtype;
@@ -53,10 +70,12 @@ void VectorContext::save_os_vector_context_to_simulated_vector_context(struct __
     memcpy(simulated_context, os_vector_context->vdata, total_size);
 }
 
-void VectorContext::save_simulated_vector_context_to_os_vector_context(struct __riscv_v_ext_state *os_vector_context, int thread_index) {
+void VectorContextManager::copy_vc_to_uc(int translation_id, ucontext_t *uc, uint32_t vc_mask) {
+    // Get OS vector context
+    struct __riscv_v_ext_state* os_vector_context = get_os_vector_context(uc);
     
-    // Calculate the address of this thread's vector context
-    void* simulated_context = (char*)global_simulated_vector_contexts_pool + thread_index * VECTOR_CONTEXT_SIZE;
+    // Restore simulated vector context to OS vector context
+    void* simulated_context = (char*)vc_pool_ + translation_id * VECTOR_CONTEXT_SIZE;
 
     // Restore vector state from simulated context
     os_vector_context->vstart = *(uint64_t*)(simulated_context + 0x1000);
@@ -72,3 +91,6 @@ void VectorContext::save_simulated_vector_context_to_os_vector_context(struct __
     size_t total_size = 32 * vlen;
     memcpy(os_vector_context->vdata, simulated_context, total_size);
 }
+
+} // namespace VectorContext
+} // namespace BinaryTranslation
