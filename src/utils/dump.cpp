@@ -30,8 +30,33 @@ DumpAnalyzer::DumpAnalyzer(const std::string& dump_file) {
     file.close();
 }
 
-std::vector<std::string> DumpAnalyzer::select_func_content(uint64_t addr_inside){
+std::vector<Instruction*> DumpAnalyzer::select_func_content(uint64_t addr_inside){
+    uint64_t start_addr = 0;
+    uint64_t end_addr = 0;
+    int i = 0;
+    while (true) {
+        uint64_t addr = addr_inside + 0x4 * 20 * i;
+        parse_line_at_addr(addr);
+        auto it = parsed_func_addrs_.upper_bound(addr);
+        if (it != parsed_func_addrs_.end()) {
+            end_addr = addr;
+            start_addr = *(--it);
+            break;
+        }
+        i++;
+        if (i > 50) {
+            std::cerr << "[ERROR] Failed to find function at address 0x" << std::hex << addr_inside << std::endl;
+            throw std::runtime_error("Failed to find function in address range");
+        }
+    }
     
+    std::vector<Instruction*> result;
+    for (uint64_t addr = start_addr; addr < end_addr; ) {
+        auto &inst = parsed_lines_[addr];
+        result.push_back(inst);
+        addr += inst->instrlen;
+    }
+    return result;
 }
 
 std::vector<Instruction*> DumpAnalyzer::select_snippet(std::pair<uint64_t, uint64_t> range){

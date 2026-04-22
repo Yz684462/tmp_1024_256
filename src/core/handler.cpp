@@ -19,15 +19,16 @@ void setup_signal_handler() {
     }
 }
 
-
-// TODO:这里面的实现是旧的，待修改
 void Handler::ebreak_handler(int sig, siginfo_t *info, void *context) {
     
     ucontext_t *uc = (ucontext_t *)context;
-    uintptr_t fault_pc = (uintptr_t)info->si_addr;
+    uint64_t fault_pc = (uint64_t)info->si_addr;
+    
+    Addr::AddrManager &addr_manager = Addr::AddrManager::getInstance();
     Dump::DumpAnalyzer &dump_analyzer = Dump::DumpAnalyzer::getInstance();
-    Instruction *fault_instruction = dump_analyzer.parse_line_at_addr(fault_pc);
     Patch::Patcher &patcher = Patch::Patcher::getInstance();
+    
+    Instruction *fault_instruction = dump_analyzer.parse_line_at_addr(addr_manager.to_rela(fault_pc));
     
     // Check if it's migration_addr
     if (fault_pc == Migration::migration_addr) {

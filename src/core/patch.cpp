@@ -25,7 +25,7 @@ void Patcher::patch_addr(uint64_t addr) {
 
     if( instr_len == 2){
         uint16_t* ptr = (uint16_t*)addr;
-        *ptr = 0x0001; // 2 bytes ebreak
+        *ptr = 0x9002; // 2 bytes ebreak
         addr_patch_data_[addr] = {.original_bytes_16 = 0x0001, .inst_len = 2};
     }
     else if( instr_len == 4){

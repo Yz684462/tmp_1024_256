@@ -4,12 +4,9 @@
 namespace BinaryTranslation {
 
 void init_migration(){
-    // migration_addr = 
-    Migration::migration_addr = 0x12345678;
-
     // dump_file_name = "dump.s"
     Dump::DumpAnalyzer::getInstance("dump.s");
-
+    
     // shared_lib_path = "libggml-cpu.so"
     void* shared_lib_handle = dlopen("libggml-cpu.so", RTLD_LAZY);
     if (!shared_lib_handle) {
@@ -24,7 +21,14 @@ void init_migration(){
         return;
     }
     
-    Addr::AddrManager::getInstance(base_addr);   
+    auto &addr_manager = Addr::AddrManager::getInstance(base_addr);   
+
+    // migration_addr = 0x12345678
+    Migration::migration_addr = addr_manager.to_abs(0x12345678);
+
+    // patch migration addr
+    auto &patcher = Patch::Patcher::getInstance();
+    patcher.patch_addr(Migration::migration_addr);
 }
 
 __attribute__((constructor))
