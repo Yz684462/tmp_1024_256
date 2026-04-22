@@ -449,10 +449,15 @@ int init_inject(int argc, char* argv[]) {
     int OFFSET_C = (int)strtol(getenv("translate_point_end_C"), NULL, 0);
     int main_pc = (int)strtol(getenv("migration_point_main"), NULL, 0);
 
-    patch_point_a = (uintptr_t)target_func_ptr + OFFSET_A - main_pc;
-    patch_point_b = (uintptr_t)target_func_ptr + OFFSET_B - main_pc;
-    patch_point_d = (uintptr_t)target_func_ptr + OFFSET_D - main_pc;
-    patch_point_c = (uintptr_t)target_func_ptr + OFFSET_C - main_pc;
+    // patch_point_a = (uintptr_t)target_func_ptr + OFFSET_A - main_pc;
+    // patch_point_b = (uintptr_t)target_func_ptr + OFFSET_B - main_pc;
+    // patch_point_d = (uintptr_t)target_func_ptr + OFFSET_D - main_pc;
+    // patch_point_c = (uintptr_t)target_func_ptr + OFFSET_C - main_pc;
+
+    patch_point_a = OFFSET_A;
+    patch_point_b = OFFSET_B;
+    patch_point_d = OFFSET_D;
+    patch_point_c = OFFSET_C;
 
     printf("[INJECTOR] Calculated patch points:\n");
     printf("  A: 0x%lx\n", patch_point_a);
