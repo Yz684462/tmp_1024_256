@@ -17,7 +17,7 @@ void setup_signal_handler() {
     }
 }
 
-void Handler::ebreak_handler(int sig, siginfo_t *info, void *context) {
+void ebreak_handler(int sig, siginfo_t *info, void *context) {
     
     ucontext_t *uc = (ucontext_t *)context;
     uint64_t fault_pc = (uint64_t)info->si_addr;
@@ -35,12 +35,12 @@ void Handler::ebreak_handler(int sig, siginfo_t *info, void *context) {
         uc->uc_mcontext.__gregs[REG_PC] = fault_pc;
     }
     // Check if it's in patched_addrs
-    else if (fault_instruction.opcode == "jal" || fault_instruction.opcode == "jalr") {
+    else if (fault_instruction->opcode == "jal" || fault_instruction->opcode == "jalr") {
         Handle::function_jump_handle(uc, fault_instruction);
         patcher.restore_addr(fault_pc);
         uc->uc_mcontext.__gregs[REG_PC] = fault_pc;
     }  // Error for other cases
-    else if (fault_instruction.opcode[0] == "v") {
+    else if (fault_instruction->opcode[0] == 'v') {
         Handle::translation_handle(uc, fault_instruction);
         uint64_t range_end = patcher.query_range_end(fault_pc);
         if (range_end == 0) {

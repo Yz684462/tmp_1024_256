@@ -1,5 +1,7 @@
 #include "core.h"
 #include "utils.h"
+#include <dlfcn.h>
+#include <iostream> 
 
 namespace BinaryTranslation {
 

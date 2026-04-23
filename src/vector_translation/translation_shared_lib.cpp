@@ -25,7 +25,7 @@ std::string make_func_name(uint64_t fault_addr) {
     return TranslationSharedLib::translation_func_name_prefix + std::to_string(fault_addr);
 }
 
-std::string make_translation_assembly_name(int translation_id) {
+std::string TranslationHandleManager::make_translation_assembly_name(int translation_id) {
     int assembly_count = assembly_files_.size();
     return TranslationSharedLib::translation_assembly_prefix + std::to_string(translation_id) + "_" + std::to_string(assembly_count) + ".s";
 }
@@ -80,8 +80,10 @@ void TranslationHandleManager::make_dump_fragments_file(std::vector<std::pair<ui
 }
 
 void TranslationHandleManager::gen_translation_shared_lib(std::vector<std::pair<uint64_t, uint64_t>> ranges){
+    TranslationId::TranslationIdManager &id_manager = TranslationId::TranslationIdManager::getInstance();
+    TranslationSharedLib::TranslationHandleManager &handle_manager = TranslationSharedLib::TranslationHandleManager::getInstance();
+
     // Prepare parameters
-    TranslationId::TranslationIdManager& id_manager = TranslationId::TranslationIdManager::getInstance();
     int translation_id = id_manager.get_current_translation_id();
     std::string dump_fragments_file_path = "dump_fragments_" + std::to_string(translation_id) + ".s";
     make_dump_fragments_file(ranges, dump_fragments_file_path);
@@ -93,7 +95,7 @@ void TranslationHandleManager::gen_translation_shared_lib(std::vector<std::pair<
     if (!translation_func_names.empty()) {
         translation_func_names.pop_back();
     }
-    std::string translation_assembly_name = make_translation_assembly_name(translation_id);
+    std::string translation_assembly_name = handle_manager.make_translation_assembly_name(translation_id);
 
     std::string command = "python3 scripts/translator.py " + 
         std::to_string(translation_id) + " " + 

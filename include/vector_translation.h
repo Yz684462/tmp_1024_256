@@ -5,9 +5,12 @@
 #include <cstdint>
 #include <utility>
 #include <string>
+#include <linux/ptrace.h>
+#include "utils.h"
+
+#define _GNU_SOURCE
 #include <ucontext.h>
 #include <mutex>
-#include "utils.h"
 
 namespace BinaryTranslation {
     
@@ -50,17 +53,17 @@ namespace BinaryTranslation {
         // Shared library translation
         void call_translation_func(void *translation_handle, uint64_t fault_addr);
         std::string make_func_name(uint64_t fault_addr);
-        std::string make_translation_assembly_name(int translation_id);
         std::string make_translation_shared_lib_name(int translation_id);
-
+        
         class TranslationHandleManager {
             public:
-                static TranslationHandleManager& getInstance();
+            static TranslationHandleManager& getInstance();
                 void *get_current_translation_shared_lib_handle();
                 void update_translation_handle();
                 void gen_translation_shared_lib(std::vector<std::pair<uint64_t, uint64_t>> ranges);
                 void compile_translation_shared_lib();
-
+                std::string make_translation_assembly_name(int translation_id);
+            
             private:
                 TranslationHandleManager() = default;
                 ~TranslationHandleManager() = default;
@@ -95,14 +98,14 @@ namespace BinaryTranslation {
                 VectorContextManager(const VectorContextManager&) = delete;
                 VectorContextManager& operator=(const VectorContextManager&) = delete;
 
-                struct __riscv_v_ext_state* get_os_vector_context(ucontext_t *uc);
                 
                 void* vc_pool_;
         };
-
-
+            
+            
     } // namespace VectorContext
-
+        
 } // namespace BinaryTranslation
-
+    
+struct __riscv_v_ext_state* get_os_vector_context(ucontext_t *uc);
 #endif // VECTOR_TRANSLATION_H

@@ -3,7 +3,7 @@
 
 # Compiler and flags
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -fPIC
+CXXFLAGS = -std=c++17 -march=rv64gcv -Wall -Wextra -O2 -fPIC
 LDFLAGS = -shared -ldl -lpthread
 
 # Directories

@@ -1,4 +1,5 @@
 #include "core.h"
+#include <sys/mman.h>
 
 namespace BinaryTranslation {
 namespace Patch {
@@ -17,7 +18,7 @@ void Patcher::patch_addr(uint64_t addr) {
         return;
     }
 
-    DumpAnalyzer& dump_analyzer = DumpAnalyzer::getInstance();
+    auto &dump_analyzer = Dump::DumpAnalyzer::getInstance();
     Instruction* instr = dump_analyzer.parse_line_at_addr(addr);
     int instr_len = instr->instrlen;
 

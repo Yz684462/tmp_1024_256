@@ -1,76 +1,25 @@
 #include "utils.h"
+#include <unordered_map>
+#include <string>
 
 namespace BinaryTranslation {
     namespace Utils {
-        int reg_name_to_num(std::string reg_name) {
-            switch (reg_name) {
-                case "zero":
-                    return -1;
-                case "ra":
-                    return 1;
-                case "sp":
-                    return 2;
-                case "gp":
-                    return 3;
-                case "tp":
-                    return 4;
-                case "t0":
-                    return 5;
-                case "t1":
-                    return 6;
-                case "t2":
-                    return 7;
-                case "s0":
-                    return 8;
-                case "s1":
-                    return 9;
-                case "a0":
-                    return 10;
-                case "a1":
-                    return 11;
-                case "a2":
-                    return 12;
-                case "a3":
-                    return 13;
-                case "a4":
-                    return 14;
-                case "a5":
-                    return 15;
-                case "a6":
-                    return 16;
-                case "a7":
-                    return 17;
-                case "s2":
-                    return 18;
-                case "s3":
-                    return 19;
-                case "s4":
-                    return 20;
-                case "s5":
-                    return 21;
-                case "s6":
-                    return 22;
-                case "s7":
-                    return 23;
-                case "s8":
-                    return 24;
-                case "s9":
-                    return 25;
-                case "s10":
-                    return 26;
-                case "s11":
-                    return 27;
-                case "t3":
-                    return 28;
-                case "t4":
-                    return 29;
-                case "t5":
-                    return 30;
-                case "t6":
-                    return 31;
-                default:
-                    return -1;
+        int reg_name_to_num(const std::string& reg_name) {
+            static const std::unordered_map<std::string, int> reg_map = {
+                {"ra", 1}, {"sp", 2}, {"gp", 3}, {"tp", 4},
+                {"t0", 5}, {"t1", 6}, {"t2", 7}, {"s0", 8}, {"s1", 9},
+                {"a0", 10}, {"a1", 11}, {"a2", 12}, {"a3", 13}, {"a4", 14},
+                {"a5", 15}, {"a6", 16}, {"a7", 17}, {"s2", 18}, {"s3", 19},
+                {"s4", 20}, {"s5", 21}, {"s6", 22}, {"s7", 23}, {"s8", 24},
+                {"s9", 25}, {"s10", 26}, {"s11", 27}, {"t3", 28}, {"t4", 29},
+                {"t5", 30}, {"t6", 31}
+            };
+            
+            auto it = reg_map.find(reg_name);
+            if (it != reg_map.end()) {
+                return it->second;
             }
+            return -1;
         }
     }
 }

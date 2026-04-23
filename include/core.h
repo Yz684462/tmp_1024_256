@@ -60,7 +60,7 @@ namespace BinaryTranslation {
                 Patcher& operator=(const Patcher&) = delete;
 
                 std::map<uint64_t, PatchData> addr_patch_data_;
-                std::map<uint64_t, uint64_t> range_patched;
+                std::map<uint64_t, uint64_t> range_patched_;
         };
 
     } // namespace Patch

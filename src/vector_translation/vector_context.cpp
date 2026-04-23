@@ -2,14 +2,29 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <linux/ptrace.h>
+
+#define _GNU_SOURCE
 #include <ucontext.h>
+#include <linux/ptrace.h>
 
 
 #define RISCV_V_MAGIC	0x53465457
-#define MAX_THREADS 64
+#define MAX_THREADS 64  
 #define VECTOR_CONTEXT_SIZE 4192
 
+struct __riscv_v_ext_state* get_os_vector_context(ucontext_t *uc) {
+    struct __riscv_extra_ext_header *ext;
+    struct __riscv_v_ext_state *v_ext_state;
+    
+    ext = (struct __riscv_extra_ext_header *)(&uc->uc_mcontext.__fpregs);
+    if (ext->hdr.magic != RISCV_V_MAGIC) {
+        fprintf(stderr, "bad vector magic: %x\n", ext->hdr.magic);
+        abort();
+    }
+    
+    v_ext_state = (struct __riscv_v_ext_state *)((char *)(ext) + sizeof(*ext));
+    return v_ext_state;
+}
 
 namespace BinaryTranslation {
 namespace VectorContext {
@@ -37,19 +52,6 @@ VectorContextManager& VectorContextManager::getInstance() {
     return instance;
 }
 
-struct __riscv_v_ext_state* VectorContextManager::get_os_vector_context(ucontext_t *uc) {
-    struct __riscv_extra_ext_header *ext;
-    struct __riscv_v_ext_state *v_ext_state;
-    
-    ext = (struct __riscv_extra_ext_header *)(&uc->uc_mcontext.__fpregs);
-    if (ext->hdr.magic != RISCV_V_MAGIC) {
-        fprintf(stderr, "bad vector magic: %x\n", ext->hdr.magic);
-        abort();
-    }
-    
-    v_ext_state = (struct __riscv_v_ext_state *)((char *)(ext) + sizeof(*ext));
-    return v_ext_state;
-}
 
 void VectorContextManager::copy_uc_to_vc(ucontext_t *uc, int translation_id, uint32_t uc_mask) {
     // Get OS vector context
@@ -70,7 +72,7 @@ void VectorContextManager::copy_uc_to_vc(ucontext_t *uc, int translation_id, uin
     // Save v0 to v31
     int vlen = (uint64_t)os_vector_context->vlenb * 8;
     size_t total_size = 32 * vlen;
-    memcpy(simulated_context, os_vector_context->vdata, total_size);
+    memcpy(simulated_context, os_vector_context->datap, total_size);
 }
 
 void VectorContextManager::copy_vc_to_uc(int translation_id, ucontext_t *uc, uint32_t vc_mask) {
@@ -92,7 +94,7 @@ void VectorContextManager::copy_vc_to_uc(int translation_id, ucontext_t *uc, uin
     // Restore vector data using same logic as save
     int vlen = (uint64_t)os_vector_context->vlenb * 8;
     size_t total_size = 32 * vlen;
-    memcpy(os_vector_context->vdata, simulated_context, total_size);
+    memcpy(os_vector_context->datap, simulated_context, total_size);
 }
 
 } // namespace VectorContext
