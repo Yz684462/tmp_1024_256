@@ -1,5 +1,6 @@
 #include "core.h"
 #include "vector_translation.h"
+#include <iostream>
 
 namespace BinaryTranslation {
 namespace Handler {
@@ -28,6 +29,8 @@ void ebreak_handler(int sig, siginfo_t *info, void *context) {
     
     Instruction *fault_instruction = dump_analyzer.parse_line_at_addr(addr_manager.to_rela(fault_pc));
     
+    std::cout <<"\n\n\n" << std::hex << fault_pc << " " << fault_instruction->opcode << std::dec<<"\n\n\n" << std::endl;
+
     // Check if it's migration_addr
     if (fault_pc == Migration::migration_addr) {
         Handle::migration_handle(uc, fault_instruction);
@@ -50,8 +53,9 @@ void ebreak_handler(int sig, siginfo_t *info, void *context) {
         uc->uc_mcontext.__gregs[REG_PC] = range_end;
     }
     else{
-        // TODO: handle other cases
-        _exit(1);
+        std::cout << "fault pc is " << std::hex << fault_pc << std::dec << std::endl;
+        // // TODO: handle other cases
+        // _exit(1);
     }
 }
 

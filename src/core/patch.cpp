@@ -2,6 +2,7 @@
 #include <sys/mman.h>
 #include <iostream> 
 
+
 namespace BinaryTranslation {
 namespace Patch {
 
@@ -24,6 +25,7 @@ void Patcher::patch_addr(uint64_t addr) {
     
     auto &addr_manager = Addr::AddrManager::getInstance();   
     
+    std::cout << "address is " << std::hex << addr_manager.to_rela(addr) << std::dec << std::endl;
     Instruction* instr = dump_analyzer.parse_line_at_addr(addr_manager.to_rela(addr));
     int instr_len = instr->instrlen;
     
@@ -41,6 +43,7 @@ void Patcher::patch_addr(uint64_t addr) {
         printf("Error: unsupported instruction length: %d\n", instr_len);
         return;
     }
+    std::cout << "here_6 " << std::endl;
     
     __builtin___clear_cache((void*)addr, (void*)(addr + instr_len));
 }
