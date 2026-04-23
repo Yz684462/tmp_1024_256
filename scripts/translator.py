@@ -104,38 +104,11 @@ class AssemblyTranslator:
             fragments_processed.append(self.translate_assembly(fragment, func_names[i], translation_id))
         self.fragments = fragments_processed
 
-    def compile_to_shared_library(self, output_file):
-        """Compile translated assembly to shared library using utility function."""
+    def write_to_file(self, output_file):
+        """Write translated assembly to output file."""
         asm_content = "\n\n".join(self.fragments)
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.s', delete=False) as temp_file:
-            translated_file = temp_file.name
-            temp_file.write(asm_content)
-            print(f"Combined translated assembly written to {translated_file}")
-    
-        # Compile to shared library
-        compile_cmd = [
-            cc,
-            "-march=rv64gcv",
-            translated_file,
-            "-shared",
-            "-fPIC",
-            "-o", output_file
-        ]
-
-        try:
-            subprocess.run(compile_cmd, check=True, capture_output=True, text=True)
-            print(f"Successfully compiled {output_file}")
-        except subprocess.CalledProcessError as e:
-            print(f"Compilation failed:\n{e.stderr}", file=sys.stderr)
-            sys.exit(1)
-        except FileNotFoundError:
-            print("Error: 'gcc' not found. Please install GCC.", file=sys.stderr)
-            sys.exit(1)
-        finally:
-            # Clean up temporary file
-            if os.path.exists(translated_file):
-                os.remove(translated_file)
-
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(asm_content)
 
 def parse_arguments() -> Tuple[str, str, list[str], str]:
     """Parse command line arguments."""
@@ -146,7 +119,7 @@ def parse_arguments() -> Tuple[str, str, list[str], str]:
         print("  translation_id: Translation ID number")
         print("  dump_file: Path to dump fragments file")
         print("  func_names: Comma-separated function names")
-        print("  output_file: Output shared library path")
+        print("  output_file: Output assembly path")
         sys.exit(1)
     
     try:
@@ -181,7 +154,7 @@ def main():
     translator = AssemblyTranslator()
     translator.split_dump_fragments(dump_file)
     translator.process_fragments(func_names, translation_id)
-    translator.compile_to_shared_library(output_file)
+    translator.write_to_file(output_file)
     compiled_output = "\n\n".join(translator.fragments) 
     print(f"\nTranslation completed successfully: {compiled_output}")
 

@@ -44,19 +44,22 @@ namespace BinaryTranslation {
 
         // Translation function name prefix
         constexpr const char* translation_func_name_prefix = "translation_func_";
+        constexpr const char* translation_assembly_prefix = "translation_asm_";
         constexpr const char* translation_shared_lib_prefix = "translation_lib_";
 
         // Shared library translation
         void call_translation_func(void *translation_handle, uint64_t fault_addr);
         std::string make_func_name(uint64_t fault_addr);
+        std::string make_translation_assembly_name(int translation_id);
         std::string make_translation_shared_lib_name(int translation_id);
 
         class TranslationHandleManager {
             public:
                 static TranslationHandleManager& getInstance();
                 void *get_current_translation_shared_lib_handle();
-                void update_translation_handle(int translation_id, void *new_translation_handle);
+                void update_translation_handle();
                 void gen_translation_shared_lib(std::vector<std::pair<uint64_t, uint64_t>> ranges);
+                void compile_translation_shared_lib();
 
             private:
                 TranslationHandleManager() = default;
@@ -68,15 +71,16 @@ namespace BinaryTranslation {
 
             public:
                 void make_dump_fragments_file(std::vector<std::pair<uint64_t, uint64_t>> ranges, std::string dump_fragments_file_path);
-                
+
                 std::map<int, void*> id_handle_map_;
+                std::vector<std::string> assembly_files_;
         };
 
     } // namespace TranslationSharedLib
 
     namespace VectorContext {
 
-    // Vector context manager singleton
+        // Vector context manager singleton
         class VectorContextManager {
 
             public:

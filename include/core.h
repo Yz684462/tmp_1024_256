@@ -20,6 +20,7 @@ namespace BinaryTranslation {
         void translation_handle(ucontext_t *uc, Instruction *fault_instruction);
         void function_jump_handle(ucontext_t *uc, Instruction *fault_instruction);
         void handle_translation_function(uint64_t addr);
+        uint64_t get_function_jump_target(ucontext_t *uc, Instruction *fault_instruction);
 
     } // namespace Handle
 
