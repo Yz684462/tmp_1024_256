@@ -299,10 +299,19 @@ void setup_handler(){
     sa.sa_sigaction = my_handler;
     sa.sa_flags = SA_SIGINFO;
     sigemptyset(&sa.sa_mask);
+    // --> 旧代码的实现
     if (sigaction(SIGTRAP, &sa, NULL) == -1) {
         perror("sigaction for SIGTRAP failed");
         return;
     }
+    // <-- 旧代码的实现
+    
+    // // --> 新代码的实现 | 使用信号40
+    // if (sigaction(40, &sa, NULL) == -1) {
+    //     perror("sigaction for SIGTRAP failed");
+    //     return;
+    // }
+    // // <-- 新代码的实现
     std::cout << "[INJECTOR] SIGTRAP handler for EBREAK registered." << std::endl;
 }
 
