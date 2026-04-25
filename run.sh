@@ -1,23 +1,27 @@
 #!/bin/bash
 
-export migration_point_main=0x914
-export migration_point_A=0x996
-export translate_point_begin_B=0x998
-export translate_point_end_C=0x9a2
-export translate_point_begin_D=0x980
+export vector_snippet_ranges="0x980,0x984 0x98e,0x996 0x998,0x9a0"
 
+# --> 旧代码的实现
 gcc -g -march=rv64gcv -mabi=lp64d -O3 -rdynamic demo_outside.S -o demo_outside  -Wl,-Bstatic -Wl,-Bdynamic -lpthread -lm # 生成demo_outside
+# <-- 旧代码的实现
+
+# # --> 新代码的实现：编译有调用迁移接口的benchmark
+# gcc -g -march=rv64gcv -mabi=lp64d -O3 -rdynamic demo_outside_new.S -o demo_outside  -Wl,-Bstatic -Wl,-Bdynamic -lpthread -lm # 生成demo_outside
+# # <-- 新代码的实现
+
 
 objdump -d demo_outside > demo_outside_dump.s
 
-python3 translate.py $translate_point_begin_B $translate_point_end_C demo_outside_dump.s  translated_function_1 translate_part1.so  # 生成translate.so
+python3 translator.py demo_outside_dump.s translated_lib.so
 
-python3 translate.py $translate_point_begin_D $translate_point_end_C demo_outside_dump.s translated_function_2 translate_part2.so # 生成translate.so
+# --> 旧代码的实现
+g++ -D_GNU_SOURCE -march=rv64gcv -shared -fPIC -o inject_lib.so inject_lib.cpp -g -lpthread -ldl # 生成inject_lib.so
+# <-- 旧代码的实现
 
-echo $$ > /proc/set_ai_thread
+# # --> 新代码的实现：编译使用bpf map的inject_lib
+# make
+# # <-- 新代码的实现
 
-# gcc -O0 -D_GNU_SOURCE -march=rv64gcv -shared -fPIC -o inject_lib.so inject_lib.c patch.c -O2 -nostartfiles -g -lpthread # 生成inject_lib.so
-make
-
-# # ##  LD_LIBRARY_PATH让动态链接器能找到hello_add_translate.so
+#  LD_LIBRARY_PATH让动态链接器能找到translated_lib.so
 LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH   LD_PRELOAD=./inject_lib.so  ./demo_outside # 运行

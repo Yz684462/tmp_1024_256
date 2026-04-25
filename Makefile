@@ -1,12 +1,12 @@
 # Simple Makefile for patch project
 # Easy to read and understand
 
-# CC = riscv64-linux-gnu-gcc
-# k3上是gcc
-CC = gcc
+# CC = riscv64-linux-gnu-g++
+# k3上是g++
+CC = g++
 CFLAGS = -O0 -D_GNU_SOURCE -fPIC
 LDFLAGS = -shared
-LIBS = -lpthread -lbpf -lelf -lz
+LIBS = -lpthread -lbpf -lelf -lz -ldl
 
 # Object files
 OBJS = patch.o inject_lib.o
@@ -20,9 +20,9 @@ inject_lib.so: $(OBJS)
 
 # Compile object files
 patch.o: patch.c patch.h common.h
-	$(CC) $(CFLAGS) -c $< -o $@
+	gcc $(CFLAGS) -c $< -o $@
 
-inject_lib.o: inject_lib.c patch.h
+inject_lib.o: inject_lib.cpp patch.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Clean build files
