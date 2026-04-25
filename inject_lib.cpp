@@ -12,7 +12,7 @@
 #include <pthread.h>
 #include <linux/ptrace.h>
 #include <string.h>
-extern "c"{
+extern "C"{
     #include "patch.h"
 }
 #include <map>
@@ -263,12 +263,19 @@ void tmp_handle_scalar_vsetvl(ucontext_t *uc,uint64_t rela_start_addr){
 
 // --- Handler ---
 void my_handler(int sig, siginfo_t *info, void *context) {
-    std::cout << ">>> SIGTRAP handler starts <<<" << std::endl;
+    static int count_handler_enter = 0;
+    ++count_handler_enter;
+    if(count_handler_enter < 5){
+        std::cout << ">>> SIGTRAP handler enters <<<" << std::endl;
+    }
+    else if (count_handler_enter == 5){
+        std::cout << "..." << std::endl;
+    }
     ucontext_t *uc = (ucontext_t *)context;
     uint64_t fault_pc = (uint64_t)info->si_addr;
     if (!is_simulated_cpu_state_initialized) {
         save_vector_states(uc);
-        std::cout << ">>> save_vector_states called <<<" << std::endl;
+        std::cout << ">>>      initialize simulated_cpu_state <<<" << std::endl;
         is_simulated_cpu_state_initialized = true;
     }
     void (*fn)() = (void(*)())(get_addr_func_ptr_map()[fault_pc - main_exe_base]);
@@ -290,8 +297,6 @@ void my_handler(int sig, siginfo_t *info, void *context) {
         // 抛出异常
         throw std::runtime_error("rela_end_addr is 0");
     }
-
-    std::cout << ">>> SIGTRAP handler returning <<<" << std::endl;
 }
 
 void setup_handler(){

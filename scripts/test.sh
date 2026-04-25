@@ -1,1 +1,0 @@
-python3 translator.py 1 ../test/test_dump_file_for_translator.s translation_func_a7964,translation_func_a79e6,translation_func_a7a3c  translation_lib_1.so > ../test/test_translator_asm_output.s

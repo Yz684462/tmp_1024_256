@@ -10,8 +10,6 @@ from rvv_sbt_tool.core.frontend.asm_parser import AsmParser
 def extract_lines_in_range(dump_lines, pc_b, pc_c):
     """从反汇编行中提取地址在 [pc_b, pc_c) 范围内的行"""
     extracted = []
-    print("pc_b is ", pc_b)
-    print("pc_c is ", pc_c)
     for line in dump_lines:
         line = line.rstrip()
         if not line.strip():

@@ -2,6 +2,12 @@
 
 export vector_snippet_ranges="0x980,0x984 0x98e,0x996 0x998,0x9a0"
 
+# # --> 新代码的实现 | 编译并挂载bpf程序，需要修改下面的<path_to_vmlinux>
+# bpftool btf dump file <path_to_vmlinux> format c > vmlinux.h
+# clang -target bpf -D__TARGET_ARCH_RISCV -I/usr/include -O2 -g -c map_def.bpf.c -o map_def.bpf.o
+# sudo bpftool prog load map_def.bpf.o /sys/fs/bpf/uprobe_prog pinmaps /sys/fs/bpf/
+# # --< 新代码的实现
+
 # --> 旧代码的实现
 gcc -g -march=rv64gcv -mabi=lp64d -O3 -rdynamic demo_outside.S -o demo_outside  -Wl,-Bstatic -Wl,-Bdynamic -lpthread -lm # 生成demo_outside
 # <-- 旧代码的实现
