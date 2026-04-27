@@ -42,9 +42,9 @@ static uint64_t translated_lib_base = 0;
 uint64_t main_exe_base = 0;
 void* simulated_cpu_state;
 static bool is_simulated_cpu_state_initialized = false;
-// ==> 旧代码的实现：ebreak方式 | 记录迁移点的地址
-static uint64_t migration_addr = 0;
-// <== 旧代码结束
+// // ==> 旧代码的实现：ebreak方式 | 记录迁移点的地址
+// static uint64_t migration_addr = 0;
+// // <== 旧代码结束
 
 // --- Utility Functions ---
 struct __riscv_v_ext_state * get_vector_context(ucontext_t *uc) {
@@ -304,19 +304,19 @@ void setup_handler(){
     sa.sa_sigaction = my_handler;
     sa.sa_flags = SA_SIGINFO;
     sigemptyset(&sa.sa_mask);
-    // --> 旧代码的实现
-    if (sigaction(SIGTRAP, &sa, NULL) == -1) {
-        perror("sigaction for SIGTRAP failed");
-        return;
-    }
-    // <-- 旧代码的实现
-    
-    // // --> 新代码的实现 | 使用信号40
-    // if (sigaction(40, &sa, NULL) == -1) {
+    // // --> 旧代码的实现
+    // if (sigaction(SIGTRAP, &sa, NULL) == -1) {
     //     perror("sigaction for SIGTRAP failed");
     //     return;
     // }
-    // // <-- 新代码的实现
+    // // <-- 旧代码的实现
+    
+    // --> 新代码的实现 | 使用信号40
+    if (sigaction(40, &sa, NULL) == -1) {
+        perror("sigaction for SIGTRAP failed");
+        return;
+    }
+    // <-- 新代码的实现
     std::cout << "[INJECTOR] SIGTRAP handler for EBREAK registered." << std::endl;
 }
 
@@ -335,26 +335,26 @@ int init_inject(int argc, char* argv[]) {
     parseRangesRegex(envValue);
     make_addr_func_ptr_map(get_vector_snippet_ranges());
     
-    // ==> 旧代码的实现：ebreak方式 | patch迁移点和翻译点
-    void *main_exe_handle = dlopen(NULL, RTLD_LAZY);
-    if (!main_exe_handle) {
-        fprintf(stderr, "Error in dlopen: %s\n", dlerror());
-        exit(EXIT_FAILURE);
-    }
-    main_exe_base = get_base_addr_with_dlinfo(main_exe_handle);
-    for(auto& range : get_vector_snippet_ranges()) {
-        patch_code(range.first + main_exe_base);
-    }
-    std::cout << "[INJECTOR] Successfully patched code with EBREAK." << std::endl;
-    // <== 旧代码结束
-
-
-    // // ==> 新代码的实现：map方式 | 将插桩点写入bpf map
-    // for(auto& range : vector_snippet_ranges) {
-    //     patch_code_map(range.first);
+    // // ==> 旧代码的实现：ebreak方式 | patch迁移点和翻译点
+    // void *main_exe_handle = dlopen(NULL, RTLD_LAZY);
+    // if (!main_exe_handle) {
+    //     fprintf(stderr, "Error in dlopen: %s\n", dlerror());
+    //     exit(EXIT_FAILURE);
     // }
-    // std::cout << "[INJECTOR] Successfully write patch points to BPF map." << std::endl;
-    // // <== 新代码结束
+    // main_exe_base = get_base_addr_with_dlinfo(main_exe_handle);
+    // for(auto& range : get_vector_snippet_ranges()) {
+    //     patch_code(range.first + main_exe_base);
+    // }
+    // std::cout << "[INJECTOR] Successfully patched code with EBREAK." << std::endl;
+    // // <== 旧代码结束
+
+
+    // ==> 新代码的实现：map方式 | 将插桩点写入bpf map
+    for(auto& range : vector_snippet_ranges) {
+        patch_code_map(range.first);
+    }
+    std::cout << "[INJECTOR] Successfully write patch points to BPF map." << std::endl;
+    // <== 新代码结束
 
     std::cout << "[INJECTOR] >>> SHARED LIBRARY CONSTRUCTOR ENDS <<<" << std::endl;
     return 0;
