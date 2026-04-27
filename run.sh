@@ -1,6 +1,10 @@
 #!/bin/bash
 
-export vector_snippet_ranges="0x980,0x984 0x98e,0x996 0x998,0x9a0"
+# 启用1024bit向量
+echo $$ > /proc/set_ai_thread
+
+export vector_snippet_ranges="0x980,0x984 0x98e,0x996 0x998,0x9a0 0x9a4,0x9ac 0x9ac,0x9b0  0x9b0,0x9bc"
+# export vector_snippet_ranges="0x980,0x9bc"
 
 # --> 新代码的实现 | 编译并挂载bpf程序，需要修改下面的<path_to_vmlinux>
 bpftool btf dump file <path_to_vmlinux> format c > vmlinux.h
@@ -19,7 +23,11 @@ gcc -g -march=rv64gcv -mabi=lp64d -O3 -rdynamic demo_outside_new.S -o demo_outsi
 
 objdump -d demo_outside > demo_outside_dump.s
 
-python3 translator.py demo_outside_dump.s translated_lib.so
+# -->TMP 在翻译器修复好bug后，使用下面的调用翻译器
+# python3 translator.py demo_outside_dump.s translated_lib.so
+# -->TMP 在翻译器修复bug前，临时使用这个手改的翻译代码
+g++ -march=rv64gcv -fPIC -shared translate_right.s -o  translated_lib.so
+# <--TMP
 
 # # --> 旧代码的实现
 # g++ -D_GNU_SOURCE -march=rv64gcv -shared -fPIC -o inject_lib.so inject_lib.cpp -g -lpthread -ldl # 生成inject_lib.so
@@ -28,6 +36,8 @@ python3 translator.py demo_outside_dump.s translated_lib.so
 # --> 新代码的实现：编译使用bpf map的inject_lib
 make
 # <-- 新代码的实现
+
+gcc -shared -fPIC -o libdata.so data.S
 
 #  LD_LIBRARY_PATH让动态链接器能找到translated_lib.so
 LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH   LD_PRELOAD=./inject_lib.so  ./demo_outside # 运行

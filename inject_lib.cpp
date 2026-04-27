@@ -39,8 +39,8 @@ extern "C"{
 // --- Global State ---
 static void *translated_lib_handle = NULL;
 static uint64_t translated_lib_base = 0;
-uint64_t main_exe_base = 0;
-void* simulated_cpu_state;
+volatile  uint64_t main_exe_base = 0;
+static uint8_t *simulated_cpu_state_ptr;
 static bool is_simulated_cpu_state_initialized = false;
 // // ==> 旧代码的实现：ebreak方式 | 记录迁移点的地址
 // static uint64_t migration_addr = 0;
@@ -63,20 +63,23 @@ struct __riscv_v_ext_state * get_vector_context(ucontext_t *uc) {
 
 void save_vector_states(ucontext_t *uc) {
 	struct __riscv_v_ext_state *v_ext_state = get_vector_context(uc); 
-    simulated_cpu_state = malloc(4192);
     // 保存向量状态
-    *(uint64_t*)((uint8_t*)simulated_cpu_state + 0x1000) = (uint64_t)v_ext_state->vstart;
+    *(uint64_t*)((uint8_t*)simulated_cpu_state_ptr + 0x1000) = (uint64_t)v_ext_state->vstart;
         //vxsat没有处理
         //vxrm没有处理
-    *(uint64_t*)((uint8_t*)simulated_cpu_state + 0x1018) = (uint64_t)v_ext_state->vcsr;
-    *(uint64_t*)((uint8_t*)simulated_cpu_state + 0x1020) = (uint64_t)v_ext_state->vl;
-    *(uint64_t*)((uint8_t*)simulated_cpu_state + 0x1028) = (uint64_t)v_ext_state->vtype;
-    *(uint64_t*)((uint8_t*)simulated_cpu_state + 0x1030) = (uint64_t)v_ext_state->vlenb;
+    *(uint64_t*)((uint8_t*)simulated_cpu_state_ptr + 0x1018) = (uint64_t)v_ext_state->vcsr;
+    *(uint64_t*)((uint8_t*)simulated_cpu_state_ptr + 0x1020) = (uint64_t)v_ext_state->vl;
+    *(uint64_t*)((uint8_t*)simulated_cpu_state_ptr + 0x1028) = (uint64_t)v_ext_state->vtype;
+    *(uint64_t*)((uint8_t*)simulated_cpu_state_ptr + 0x1030) = (uint64_t)v_ext_state->vlenb;
+
+    if(v_ext_state->vlenb != 128){
+        std::cout << "错误：vlenb应该是128，现在只支持1024到256" << std::endl;
+    }
 
     // 保存 v0 到 v31
     int vlen = (uint64_t)v_ext_state->vlenb * 8;
     for(int i = 0; i < 32* vlen / 64; i++){
-        *((uint64_t*)simulated_cpu_state + i) = *((uint64_t*)v_ext_state->datap + i);
+        *((uint64_t*)simulated_cpu_state_ptr + i) = *((uint64_t*)v_ext_state->datap + i);
     }
 
 }
@@ -245,23 +248,34 @@ void make_addr_func_ptr_map(const std::vector<std::pair<uint64_t, uint64_t>>& ra
     translated_lib_base = get_base_addr_with_dlinfo(translated_lib_handle);
 }
 
-#define STORE(uc, reg, idx) do { \
-    __asm__ volatile ( \
-        "sw %1, %0" \
-        : "=m" (uc->uc_mcontext.__gregs[idx]) \
-        : "r" (reg) \
-        : "memory" \
-    ); \
-} while(0)
-
-
 void tmp_handle_scalar_vsetvl(ucontext_t *uc,uint64_t rela_start_addr){
     if(rela_start_addr == 0x980){
-        uc->uc_mcontext.__gregs[12] = *(uint64_t*)((uint8_t*)simulated_cpu_state + 0x1020);        
+        uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
     }
+    else if(rela_start_addr == 0x9a4){
+        uc->uc_mcontext.__gregs[10] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);
+    }   
 }
 
 // --- Handler ---
+#define LOAD(reg, idx) \
+    do { \
+    __asm__ volatile ( \
+        "mv " #reg ", %0\n\t" \
+        : \
+        : "r" (uc->uc_mcontext.__gregs[idx]) \
+        : #reg  \
+    ); \
+} while(0)
+#define STORE(reg, idx) \
+    do { \
+        __asm__ volatile ( \
+            "mv %0, " #reg "\n\t" \
+            : "=r" (uc->uc_mcontext.__gregs[idx]) \
+            : \
+            : "memory" \
+        ); \
+    } while(0)
 void my_handler(int sig, siginfo_t *info, void *context) {
     static int count_handler_enter = 0;
     ++count_handler_enter;
@@ -279,8 +293,22 @@ void my_handler(int sig, siginfo_t *info, void *context) {
         is_simulated_cpu_state_initialized = true;
     }
     void (*fn)() = (void(*)())(get_addr_func_ptr_map()[fault_pc - main_exe_base]);
-    fflush(stdout);
+    uint64_t tmp_main_exe = main_exe_base;
+    LOAD(a0, 10);
+    LOAD(a1, 11);
+    LOAD(a2, 12);
+    LOAD(a3, 13);
+    LOAD(a4, 14);
+
     fn();
+
+    STORE(a0, 10);
+    STORE(a1, 11);
+    STORE(a2, 12);
+    STORE(a3, 13);
+    STORE(a4, 14);
+
+    main_exe_base = tmp_main_exe;
     uint64_t rela_start_addr = fault_pc - main_exe_base;
     tmp_handle_scalar_vsetvl(uc, rela_start_addr);
     uint64_t rela_end_addr = 0;
@@ -293,9 +321,19 @@ void my_handler(int sig, siginfo_t *info, void *context) {
     if (rela_end_addr != 0) {
         uc->uc_mcontext.__gregs[REG_PC] = rela_end_addr + main_exe_base;
     } else {
+        std::cout << "rela_start_addr = " << rela_start_addr << std::endl;
         std::cerr << "Error: rela_end_addr is 0" << std::endl;
         // 抛出异常
         throw std::runtime_error("rela_end_addr is 0");
+    }
+    if (rela_start_addr == 0x9ac){
+        int vlen = 1024;
+        std::cout << std::dec;
+        float *v8_ptr = (float*)(simulated_cpu_state_ptr + 8 * 1024 / 8); 
+        for(int i = 0; i < 1024 / 32; i++){
+            std::cout << v8_ptr[i] << " ";
+        }
+        std::cout << std::endl;
     }
 }
 
@@ -320,11 +358,16 @@ void setup_handler(){
     std::cout << "[INJECTOR] SIGTRAP handler for EBREAK registered." << std::endl;
 }
 
+void load_simulated_data_ptr(){
+    void* data_handle = dlopen("./libdata.so", RTLD_NOW | RTLD_GLOBAL);
+    simulated_cpu_state_ptr = (uint8_t *)dlsym(data_handle, "simulated_cpu_state");
+}
+
 // --- Library Entry Point ---
 __attribute__((constructor))
 int init_inject(int argc, char* argv[]) {
     std::cout << "\n[INJECTOR] >>> SHARED LIBRARY CONSTRUCTOR STARTS <<<" << std::endl;
-
+    load_simulated_data_ptr();
     setup_handler();
 
     const char* envValue = std::getenv("vector_snippet_ranges");
@@ -350,7 +393,7 @@ int init_inject(int argc, char* argv[]) {
 
 
     // ==> 新代码的实现：map方式 | 将插桩点写入bpf map
-    for(auto& range : vector_snippet_ranges) {
+    for(auto& range : get_vector_snippet_ranges()) {
         patch_code_map(range.first);
     }
     std::cout << "[INJECTOR] Successfully write patch points to BPF map." << std::endl;

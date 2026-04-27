@@ -127,23 +127,29 @@ main:
         vadd.vx v8, v8, a3
         bnez    a1, .LBB2_1
         call    call_migration
-        vsetvli a0, zero, e32, m1, ta, ma
-        vmv.s.x v12, zero
+
         li      a0, 0
         li      a1, 1024
-.LBB2_3:
-        vsetvli a2, a1, e32, m2, ta, ma
+        vsetvli a2, zero, e32, m2, ta, ma
+        vmv.v.i v8, 0
+.LBB1_3:
+        vsetvli a2, a1, e8, mf2, ta, ma
         slli    a3, a0, 2
         add     a4, s1, a3
         add     a3, a3, s0
-        vle32.v v8, (a4)
-        vle32.v v10, (a3)
+        vle32.v v10, (a4)
+        vle32.v v12, (a3)
         sub     a1, a1, a2
-        vfmul.vv        v8, v8, v10
-        vfredosum.vs    v12, v8, v12
+        vsetvli zero, zero, e32, m2, tu, ma
+        vfmacc.vv       v8, v12, v10
         add     a0, a0, a2
-        bnez    a1, .LBB2_3
-        vfmv.f.s        fa5, v12
+        bnez    a1, .LBB1_3
+        vsetvli a0, zero, e32, m2, ta, ma
+        vmv.s.x v10, zero
+        vfredusum.vs    v8, v8, v10
+        vfmv.f.s        fa5, v8
+
+
         fcvt.d.s        fa5, fa5
         fmv.x.d a1, fa5
 .Lpcrel_hi6:

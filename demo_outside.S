@@ -45,6 +45,7 @@ main:
         vsetvli zero, zero, e64, m4, ta, ma
         vadd.vx v8, v8, a3
         bnez    a1, .LBB1_1
+        
         li      a0, 0
         li      a1, 1024
         vsetvli a2, zero, e32, m2, ta, ma
@@ -65,6 +66,8 @@ main:
         vmv.s.x v10, zero
         vfredusum.vs    v8, v8, v10
         vfmv.f.s        fa5, v8
+
+
         fcvt.d.s        fa5, fa5
         fmv.x.d a1, fa5
 .Lpcrel_hi0:
