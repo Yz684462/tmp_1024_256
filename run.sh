@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export vector_snippet_ranges="0x980,0x984 0x98e,0x996 0x998,0x9a0"
+export vector_snippet_ranges="0xb9c,0xba0 0xbaa,0xbb2 0xbb4,0xbbc"
 
 # --> 新代码的实现 | 编译并挂载bpf程序，需要修改下面的<path_to_vmlinux>
 bpftool btf dump file <path_to_vmlinux> format c > vmlinux.h
