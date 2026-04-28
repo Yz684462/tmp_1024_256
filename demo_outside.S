@@ -58,10 +58,13 @@ main:
         vle32.v v10, (a4)
         vle32.v v12, (a3)
         sub     a1, a1, a2
+
         vsetvli zero, zero, e32, m2, tu, ma
         vfmacc.vv       v8, v12, v10
         add     a0, a0, a2
         bnez    a1, .LBB1_3
+
+        
         vsetvli a0, zero, e32, m2, ta, ma
         vmv.s.x v10, zero
         vfredusum.vs    v8, v8, v10
@@ -70,6 +73,7 @@ main:
 
         fcvt.d.s        fa5, fa5
         fmv.x.d a1, fa5
+        
 .Lpcrel_hi0:
         auipc   a0, %pcrel_hi(.L.str)
         addi    a0, a0, %pcrel_lo(.Lpcrel_hi0)

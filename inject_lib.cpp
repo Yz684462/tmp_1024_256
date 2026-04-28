@@ -1,17 +1,11 @@
 // inject_lib.c
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdint.h>
 #include <dlfcn.h>
 #include <sys/mman.h>
-#include <string.h>
 #include <unistd.h>
 #include <signal.h>
 #include <ucontext.h>
-#include <sched.h>
-#include <pthread.h>
 #include <linux/ptrace.h>
-#include <string.h>
 extern "C"{
     #include "patch.h"
 }
@@ -19,10 +13,11 @@ extern "C"{
 #include <iostream>
 #include <string>
 #include <vector>
-#include <regex>
 #include <cstdlib>
 #include <link.h>
 #include <mutex>
+#include <fstream>
+#include <sstream> 
 #define RISCV_V_MAGIC		0x53465457
 
 // --- Configuration Macros ---
@@ -42,9 +37,6 @@ static uint64_t translated_lib_base = 0;
 volatile  uint64_t main_exe_base = 0;
 static uint8_t *simulated_cpu_state_ptr;
 static bool is_simulated_cpu_state_initialized = false;
-// // ==> 旧代码的实现：ebreak方式 | 记录迁移点的地址
-// static uint64_t migration_addr = 0;
-// // <== 旧代码结束
 
 // --- Utility Functions ---
 struct __riscv_v_ext_state * get_vector_context(ucontext_t *uc) {
@@ -53,7 +45,7 @@ struct __riscv_v_ext_state * get_vector_context(ucontext_t *uc) {
     
     ext = (struct __riscv_extra_ext_header *)(&uc->uc_mcontext.__fpregs);
     if (ext->hdr.magic != RISCV_V_MAGIC) {
-        fprintf(stderr, "bad vector magic: %x\n", ext->hdr.magic);
+        std::cout << "bad vector magic: " <<  ext->hdr.magic << std::endl;
         abort();
     }
     
@@ -64,13 +56,13 @@ struct __riscv_v_ext_state * get_vector_context(ucontext_t *uc) {
 void save_vector_states(ucontext_t *uc) {
 	struct __riscv_v_ext_state *v_ext_state = get_vector_context(uc); 
     // 保存向量状态
-    *(uint64_t*)((uint8_t*)simulated_cpu_state_ptr + 0x1000) = (uint64_t)v_ext_state->vstart;
+    *(uint64_t*)(simulated_cpu_state_ptr + 0x1000) = (uint64_t)v_ext_state->vstart;
         //vxsat没有处理
         //vxrm没有处理
-    *(uint64_t*)((uint8_t*)simulated_cpu_state_ptr + 0x1018) = (uint64_t)v_ext_state->vcsr;
-    *(uint64_t*)((uint8_t*)simulated_cpu_state_ptr + 0x1020) = (uint64_t)v_ext_state->vl;
-    *(uint64_t*)((uint8_t*)simulated_cpu_state_ptr + 0x1028) = (uint64_t)v_ext_state->vtype;
-    *(uint64_t*)((uint8_t*)simulated_cpu_state_ptr + 0x1030) = (uint64_t)v_ext_state->vlenb;
+    *(uint64_t*)(simulated_cpu_state_ptr + 0x1018) = (uint64_t)v_ext_state->vcsr;
+    *(uint64_t*)(simulated_cpu_state_ptr + 0x1020) = (uint64_t)v_ext_state->vl;
+    *(uint64_t*)(simulated_cpu_state_ptr + 0x1028) = (uint64_t)v_ext_state->vtype;
+    *(uint64_t*)(simulated_cpu_state_ptr + 0x1030) = (uint64_t)v_ext_state->vlenb;
 
     if(v_ext_state->vlenb != 128){
         std::cout << "错误：vlenb应该是128，现在只支持1024到256" << std::endl;
@@ -82,53 +74,6 @@ void save_vector_states(ucontext_t *uc) {
         *((uint64_t*)simulated_cpu_state_ptr + i) = *((uint64_t*)v_ext_state->datap + i);
     }
 
-}
-
-void switch_cpu_set(char core_type){
-    pid_t pid = getpid();
-    FILE* file = NULL;
-    char proc_path_ai[] = "/proc/set_ai_thread";
-    char proc_path_regular[] = "/proc/set_regular_thread";
-
-    // 以写入模式打开目标文件
-    if('a' ==  core_type){
-        file = fopen(proc_path_ai, "w");
-    }
-    else if('x' == core_type){
-        file = fopen(proc_path_regular, "w");
-    }
-    else{
-        return;
-    }
-    if (file == NULL) {
-        // 打开文件失败，通常意味着没有权限或文件不存在
-        perror("错误: 无法打开 /proc/set_ai_thread");
-        return;
-    }
-
-    // 将PID格式化并写入文件
-    // 使用 %d 格式符处理常见的整数型PID
-    if (fprintf(file, "%d", pid) < 0) {
-        // 写入操作失败
-        perror("错误: 写入 PID 到 /proc/set_ai_thread 失败");
-        fclose(file);
-        return;
-    }
-
-    // 关闭文件句柄
-    if (fclose(file) != 0) {
-        // 关闭文件失败
-        perror("错误: 关闭 /proc/set_ai_thread 文件失败");
-        return; // 虽然写入已成功，但关闭失败也应视为一种错误
-    }
-    sched_yield();
-    // 操作成功完成
-    return;
-}
-
-void query_cpu(){
-    int current_cpu = sched_getcpu();
-    printf("[QUERY_CPU] current CPU id is: %d\n", current_cpu);
 }
 
 static std::map<uint64_t, void*>& get_addr_func_ptr_map() {
@@ -166,7 +111,7 @@ void patch_code(uint64_t addr) {
 
     // 修改访问权限使得可修改
     if (mprotect((void*)page_start, page_size, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
-        perror("mprotect failed during patching");
+        std::cout << "mprotect failed during patching" << std::endl; 
         exit(EXIT_FAILURE);
     }
 
@@ -196,22 +141,24 @@ void restore_code(uintptr_t addr) {
 }
 
 void parseRangesRegex(const std::string& envValue) {
-    // 匹配 "0x[0-9a-fA-F]+,0x[0-9a-fA-F]+" 模式
-    std::regex rangePattern(R"((0x[0-9a-fA-F]+),?(0x[0-9a-fA-F]+))");
-    std::smatch match;
-    std::string::const_iterator searchStart(envValue.cbegin());
+    std::istringstream iss(envValue);
+    std::string token;
     
-    while (std::regex_search(searchStart, envValue.cend(), match, rangePattern)) {
-        try {
-            uint64_t start = std::stoull(match[1].str(), nullptr, 0);
-            uint64_t end = std::stoull(match[2].str(), nullptr, 0);
-            get_vector_snippet_ranges().push_back(std::make_pair(start, end));
-        } catch (const std::exception& e) {
-            std::cerr << "解析错误: " << e.what() << std::endl;
+    while (iss >> token) {
+        size_t comma = token.find(',');
+        if (comma == std::string::npos) {
+            std::cerr << "Invalid range format: " << token << " (missing comma)" << std::endl;
+            continue;
         }
-        searchStart = match.suffix().first;
+        
+        std::string start_hex = token.substr(0, comma);
+        std::string end_hex = token.substr(comma + 1);
+        
+        uint64_t start = std::stoull(start_hex, nullptr, 0);
+        uint64_t end = std::stoull(end_hex, nullptr, 0);
+        
+        get_vector_snippet_ranges().push_back({start, end});
     }
-    
 }
 
 uint64_t get_base_addr_with_dlinfo(void *handle) {
@@ -219,7 +166,7 @@ uint64_t get_base_addr_with_dlinfo(void *handle) {
     
     // 获取 link_map
     if (dlinfo(handle, RTLD_DI_LINKMAP, &map) != 0) {
-        fprintf(stderr, "dlinfo failed: %s\n", dlerror());
+        std::cout << "dlinfo failed: " << dlerror() << std::endl;
         return 0;
     }
     
@@ -249,12 +196,41 @@ void make_addr_func_ptr_map(const std::vector<std::pair<uint64_t, uint64_t>>& ra
 }
 
 void tmp_handle_scalar_vsetvl(ucontext_t *uc,uint64_t rela_start_addr){
-    if(rela_start_addr == 0x980){
+    // -->新代码的实现
+    if(rela_start_addr == 0xbf6){
         uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
     }
-    else if(rela_start_addr == 0x9a4){
+    else if(rela_start_addr == 0xbfe){
+        uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
+    }
+    else if(rela_start_addr == 0xc22){
         uc->uc_mcontext.__gregs[10] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);
     }   
+    // <--新代码的实现
+
+
+    // // -->旧代码的实现
+    // if(rela_start_addr == 0x994){
+    //     uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
+    // }
+    // else if(rela_start_addr == 0x99c){
+    //     uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
+    // }
+    // else if(rela_start_addr == 0x9c0){
+    //     uc->uc_mcontext.__gregs[10] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);
+    // }   
+    
+    // // // 无while版本
+    // // if(rela_start_addr == 0x978){
+    // //     uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
+    // // }
+    // // else if(rela_start_addr == 0x980){
+    // //     uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
+    // // }
+    // // else if(rela_start_addr == 0x9a4){
+    // //     uc->uc_mcontext.__gregs[10] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);
+    // // }   
+    // // <--旧代码的实现
 }
 
 // --- Handler ---
@@ -276,6 +252,48 @@ void tmp_handle_scalar_vsetvl(ucontext_t *uc,uint64_t rela_start_addr){
             : "memory" \
         ); \
     } while(0)
+
+void print_vreg(int vreg, int data_type){
+    if (data_type == 0){
+        float *vreg_ptr = (float *)(simulated_cpu_state_ptr + 128 * vreg);
+        std::cout << std::dec << "simulated v" << vreg << " data:" << std::endl;
+        for(int i = 0; i < 1024 * 8 / 32 / 8; i++){
+            std::cout << vreg_ptr[i] << " ";
+        }
+        std::cout << std::endl;
+    }
+}
+
+// void debug_print(){
+//     std::cout << "offset = 0x" << std::hex << rela_start_addr << std::endl;
+//     std::cout << std::dec << "vl = " << *(uint64_t*)(simulated_cpu_state_ptr + 0x1020) 
+//         << " vtype = " <<  *(uint64_t*)(simulated_cpu_state_ptr + 0x1028) << std::endl;  
+//     if ( rela_start_addr == 0x9aa){
+//         std::cout << "a0 = " << uc->uc_mcontext.__gregs[10] << std::endl;
+//         std::cout << "a1 = " << uc->uc_mcontext.__gregs[11] << std::endl;
+//         std::cout << "a2 = " << uc->uc_mcontext.__gregs[12] << std::endl;
+//         std::cout << "a3 = " << uc->uc_mcontext.__gregs[13] << std::endl;
+//         std::cout << "a4 = " << uc->uc_mcontext.__gregs[14] << std::endl;
+//         std::cout << "a3 data: " << std::endl;
+//         float *data_ptr = (float *)uc->uc_mcontext.__gregs[13];
+//         for(int i =0; i < 16; i++){
+//             std::cout << data_ptr[i] << " ";
+//         }
+//         std::cout << std::endl;
+//         std::cout << "a4 data: " << std::endl;
+//         data_ptr = (float *)uc->uc_mcontext.__gregs[14];
+//         for(int i =0; i < 16; i++){
+//             std::cout << data_ptr[i] << " ";
+//         }
+//         std::cout << std::endl;
+//     }
+
+//     print_vreg(8,0);
+//     print_vreg(10,0);
+//     print_vreg(12,0);
+//     std::cout << std::endl;
+// }
+
 void my_handler(int sig, siginfo_t *info, void *context) {
     static int count_handler_enter = 0;
     ++count_handler_enter;
@@ -310,6 +328,7 @@ void my_handler(int sig, siginfo_t *info, void *context) {
 
     main_exe_base = tmp_main_exe;
     uint64_t rela_start_addr = fault_pc - main_exe_base;
+
     tmp_handle_scalar_vsetvl(uc, rela_start_addr);
     uint64_t rela_end_addr = 0;
     for(const auto& range : get_vector_snippet_ranges()) {
@@ -326,14 +345,8 @@ void my_handler(int sig, siginfo_t *info, void *context) {
         // 抛出异常
         throw std::runtime_error("rela_end_addr is 0");
     }
-    if (rela_start_addr == 0x9ac){
-        int vlen = 1024;
-        std::cout << std::dec;
-        float *v8_ptr = (float*)(simulated_cpu_state_ptr + 8 * 1024 / 8); 
-        for(int i = 0; i < 1024 / 32; i++){
-            std::cout << v8_ptr[i] << " ";
-        }
-        std::cout << std::endl;
+    if (rela_start_addr == 0xc22){
+        print_vreg(8, 0);
     }
 }
 
@@ -381,7 +394,7 @@ int init_inject(int argc, char* argv[]) {
     // // ==> 旧代码的实现：ebreak方式 | patch迁移点和翻译点
     // void *main_exe_handle = dlopen(NULL, RTLD_LAZY);
     // if (!main_exe_handle) {
-    //     fprintf(stderr, "Error in dlopen: %s\n", dlerror());
+    //     std::cout << "Error in dlopen: " << dlerror() << std::endl;
     //     exit(EXIT_FAILURE);
     // }
     // main_exe_base = get_base_addr_with_dlinfo(main_exe_handle);
@@ -393,10 +406,34 @@ int init_inject(int argc, char* argv[]) {
 
 
     // ==> 新代码的实现：map方式 | 将插桩点写入bpf map
-    for(auto& range : get_vector_snippet_ranges()) {
-        patch_code_map(range.first);
+    //打印history.txt文件，读取里面是否有当前程序路径
+    std::string current_path = argv[0];
+    std::ifstream history_file("history.txt");
+    std::string line;
+    bool skip = false;
+    while (std::getline(history_file, line)) {
+        if (line.find(current_path) != std::string::npos) {
+            skip = true;
+            break;
+        }
     }
-    std::cout << "[INJECTOR] Successfully write patch points to BPF map." << std::endl;
+    history_file.close();
+    
+    if (skip) {
+        std::cout << "[INJECTOR] Skipping patching code with BPF map." << std::endl;
+    }
+    else{
+        // 写入历史记录
+        std::ofstream history_file("history.txt", std::ios::app);
+        history_file << current_path << std::endl;
+        history_file.close();
+        
+        // 写入bpf map
+        for(auto& range : get_vector_snippet_ranges()) {
+            patch_code_map(range.first);
+        }
+        std::cout << "[INJECTOR] Successfully write patch points to BPF map." << std::endl;
+    }
     // <== 新代码结束
 
     std::cout << "[INJECTOR] >>> SHARED LIBRARY CONSTRUCTOR ENDS <<<" << std::endl;

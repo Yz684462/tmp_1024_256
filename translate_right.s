@@ -1,9 +1,9 @@
     .text
 
-    .globl  translated_function_2432
-    .type   translated_function_2432, @function
+    .globl  translated_function_2452
+    .type   translated_function_2452, @function
 	.extern simulated_cpu_state
-translated_function_2432:
+translated_function_2452:
     # 保存 RVV 翻译块现场: vsetvli
     addi    sp, sp, -48
     sd      t0, 0(sp)
@@ -39,14 +39,14 @@ translated_function_2432:
 
     ret
 
-    .size   translated_function_2432, .-translated_function_2432
+    .size   translated_function_2452, .-translated_function_2452
 
     .text
 
-    .globl  translated_function_2446
-    .type   translated_function_2446, @function
+    .globl  translated_function_2474
+    .type   translated_function_2474, @function
 	.extern simulated_cpu_state
-translated_function_2446:
+translated_function_2474:
     # 保存 RVV 翻译块现场: vle32.v
     addi    sp, sp, -48
     sd      t0, 0(sp)
@@ -123,14 +123,14 @@ translated_function_2446:
 
     ret
 
-    .size   translated_function_2446, .-translated_function_2446
+    .size   translated_function_2474, .-translated_function_2474
 
     .text
 
-    .globl  translated_function_2456
-    .type   translated_function_2456, @function
+    .globl  translated_function_2484
+    .type   translated_function_2484, @function
 	.extern simulated_cpu_state
-translated_function_2456:
+translated_function_2484:
     # 保存 RVV 翻译块现场: vsetvli
     addi    sp, sp, -32
     sd      t0, 0(sp)
@@ -220,14 +220,14 @@ translated_function_2456:
 
     ret
 
-    .size   translated_function_2456, .-translated_function_2456
+    .size   translated_function_2484, .-translated_function_2484
 
     .text
 
-    .globl  translated_function_2468
-    .type   translated_function_2468, @function
+    .globl  translated_function_2496
+    .type   translated_function_2496, @function
 	.extern simulated_cpu_state
-translated_function_2468:
+translated_function_2496:
     # 保存 RVV 翻译块现场: vsetvli
     addi    sp, sp, -32
     sd      t0, 0(sp)
@@ -271,14 +271,14 @@ translated_function_2468:
 
     ret
 
-    .size   translated_function_2468, .-translated_function_2468
+    .size   translated_function_2496, .-translated_function_2496
 
     .text
 
-    .globl  translated_function_2476
-    .type   translated_function_2476, @function
+    .globl  translated_function_2504
+    .type   translated_function_2504, @function
 	.extern simulated_cpu_state
-translated_function_2476:
+translated_function_2504:
     # 保存 RVV 翻译块现场: vfredusum.vs
     addi    sp, sp, -64
     sd      t0, 0(sp)
@@ -326,14 +326,14 @@ translated_function_2476:
 
     ret
 
-    .size   translated_function_2476, .-translated_function_2476
+    .size   translated_function_2504, .-translated_function_2504
 
     .text
 
-    .globl  translated_function_2480
-    .type   translated_function_2480, @function
+    .globl  translated_function_2508
+    .type   translated_function_2508, @function
 	.extern simulated_cpu_state
-translated_function_2480:
+translated_function_2508:
     # 保存 RVV 翻译块现场: vfmv.f.s
     addi    sp, sp, -16
     sd      t0, 0(sp)
@@ -355,5 +355,5 @@ translated_function_2480:
     fmv.x.d  a1, fa5
     ret
 
-    .size   translated_function_2480, .-translated_function_2480
+    .size   translated_function_2508, .-translated_function_2508
 
