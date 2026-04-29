@@ -13,7 +13,7 @@ void call_migration(){
         perror("错误: 无法打开 /proc/set_ai_thread");
         return;
     }
-    if (fprintf(file, "%d", pid) < 0) {
+    if (fprintf(file, "%d", -pid) < 0) {
         // 写入操作失败
         perror("错误: 写入 PID 到 /proc/set_ai_thread 失败");
         fclose(file);
@@ -30,12 +30,10 @@ void call_migration(){
 
 // 关键：显式做 ones[i] * data[i] 累加
 float dot_product_like(float *data, float *ones, size_t n) {
-    call_migration();
     float sum = 0.0f;
     for (size_t i = 0; i < n; ++i) {
         sum += ones[i] * data[i];
     }
-    sleep(1);
     return sum;
 }
 
@@ -49,9 +47,11 @@ int main() {
         ones[i] = 1.0f;            // 全 1
     }
     
-    while (1){
+    call_migration();
+    while (1) {
         float total = dot_product_like(data, ones, n);
         printf("Sum = %.2f\n", total);  // 应为 524800.00
+        sleep(1);
     }
 
     free(data);

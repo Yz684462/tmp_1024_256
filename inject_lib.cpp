@@ -197,13 +197,13 @@ void make_addr_func_ptr_map(const std::vector<std::pair<uint64_t, uint64_t>>& ra
 
 void tmp_handle_scalar_vsetvl(ucontext_t *uc,uint64_t rela_start_addr){
     // -->新代码的实现
-    if(rela_start_addr == 0xbf6){
+    if(rela_start_addr == 0xb8e){
         uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
     }
-    else if(rela_start_addr == 0xbfe){
+    else if(rela_start_addr == 0xb96){
         uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
     }
-    else if(rela_start_addr == 0xc22){
+    else if(rela_start_addr == 0xbba){
         uc->uc_mcontext.__gregs[10] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);
     }   
     // <--新代码的实现
