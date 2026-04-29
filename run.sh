@@ -38,12 +38,12 @@ gcc -g -march=rv64gcv -mabi=lp64d -O3 -rdynamic demo_outside_while_new.S -o demo
 
 objdump -d demo_outside > demo_outside_dump.s
 
-# python3 translator.py demo_outside_dump.s translated_lib.so
+python3 translator.py demo_outside_dump.s translated_lib.so
 
-# make
+make
 
-# gcc -shared -fPIC -o libdata.so data.S
+gcc -shared -fPIC -o libdata.so data.S
 
-# LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH   LD_PRELOAD=./inject_lib.so  ./demo_outside # 运行
+LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH   LD_PRELOAD=./inject_lib.so  ./demo_outside # 运行
 
 # <-- 新代码的实现
