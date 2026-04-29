@@ -30,7 +30,7 @@
 # clang -target bpf -D__TARGET_ARCH_RISCV -I/usr/include -O2 -g -c map_def.bpf.c -o map_def.bpf.o
 # sudo bpftool prog load map_def.bpf.o /sys/fs/bpf/uprobe_prog pinmaps /sys/fs/bpf/
 
-export vector_snippet_ranges="0xbf6,0xc02 0xbfe,0xc02 0xc0c,0xc14 0xc16,0xc1e 0xc22,c3a" # while 版本
+export vector_snippet_ranges="0xbf6,0xc02 0xbfe,0xc02 0xc0c,0xc14 0xc16,0xc1e 0xc22,0xc3a" # while 版本
 
 gcc -g -march=rv64gcv -mabi=lp64d -O3 -rdynamic demo_outside_while_new.S -o demo_outside  -Wl,-Bstatic -Wl,-Bdynamic -lpthread -lm # 生成demo_outside | while版本
 # gcc -g -march=rv64gcv -mabi=lp64d -O3 -rdynamic demo_outside_new.S -o demo_outside  -Wl,-Bstatic -Wl,-Bdynamic -lpthread -lm # 生成demo_outside | 非while版本
