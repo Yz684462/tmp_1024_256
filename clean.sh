@@ -1,1 +1,2 @@
 rm  *.so  demo_outside demo_outside_dump.s extracted.s translate.s
+> history.txt

@@ -63,6 +63,12 @@ void save_vector_states(ucontext_t *uc) {
     *(uint64_t*)(simulated_cpu_state_ptr + 0x1020) = (uint64_t)v_ext_state->vl;
     *(uint64_t*)(simulated_cpu_state_ptr + 0x1028) = (uint64_t)v_ext_state->vtype;
     *(uint64_t*)(simulated_cpu_state_ptr + 0x1030) = (uint64_t)v_ext_state->vlenb;
+    std::cout << "vector states:" << std::endl;
+    std::cout << "\tvstart = " << (uint64_t)v_ext_state->vstart << std::endl;
+    std::cout << "\tvcsr = " << (uint64_t)v_ext_state->vcsr << std::endl;
+    std::cout << "\tvl = " << (uint64_t)v_ext_state->vl << std::endl;
+    std::cout << "\tvtype = " << (uint64_t)v_ext_state->vtype << std::endl;
+    std::cout << "\tvlenb = " << (uint64_t)v_ext_state->vlenb << std::endl;
 
     if(v_ext_state->vlenb != 128){
         std::cout << "错误：vlenb应该是128，现在只支持1024到256" << std::endl;
@@ -210,26 +216,26 @@ void tmp_handle_scalar_vsetvl(ucontext_t *uc,uint64_t rela_start_addr){
 
 
     // // -->旧代码的实现
-    // if(rela_start_addr == 0x994){
-    //     uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
-    // }
-    // else if(rela_start_addr == 0x99c){
-    //     uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
-    // }
-    // else if(rela_start_addr == 0x9c0){
-    //     uc->uc_mcontext.__gregs[10] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);
-    // }   
-    
-    // // // 无while版本
-    // // if(rela_start_addr == 0x978){
+    // // if(rela_start_addr == 0x994){
     // //     uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
     // // }
-    // // else if(rela_start_addr == 0x980){
+    // // else if(rela_start_addr == 0x99c){
     // //     uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
     // // }
-    // // else if(rela_start_addr == 0x9a4){
+    // // else if(rela_start_addr == 0x9c0){
     // //     uc->uc_mcontext.__gregs[10] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);
     // // }   
+    
+    // // 无while版本
+    // if(rela_start_addr == 0x978){
+    //     uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
+    // }
+    // else if(rela_start_addr == 0x980){
+    //     uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
+    // }
+    // else if(rela_start_addr == 0x9a4){
+    //     uc->uc_mcontext.__gregs[10] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);
+    // }   
     // // <--旧代码的实现
 }
 
@@ -264,35 +270,35 @@ void print_vreg(int vreg, int data_type){
     }
 }
 
-// void debug_print(){
-//     std::cout << "offset = 0x" << std::hex << rela_start_addr << std::endl;
-//     std::cout << std::dec << "vl = " << *(uint64_t*)(simulated_cpu_state_ptr + 0x1020) 
-//         << " vtype = " <<  *(uint64_t*)(simulated_cpu_state_ptr + 0x1028) << std::endl;  
-//     if ( rela_start_addr == 0x9aa){
-//         std::cout << "a0 = " << uc->uc_mcontext.__gregs[10] << std::endl;
-//         std::cout << "a1 = " << uc->uc_mcontext.__gregs[11] << std::endl;
-//         std::cout << "a2 = " << uc->uc_mcontext.__gregs[12] << std::endl;
-//         std::cout << "a3 = " << uc->uc_mcontext.__gregs[13] << std::endl;
-//         std::cout << "a4 = " << uc->uc_mcontext.__gregs[14] << std::endl;
-//         std::cout << "a3 data: " << std::endl;
-//         float *data_ptr = (float *)uc->uc_mcontext.__gregs[13];
-//         for(int i =0; i < 16; i++){
-//             std::cout << data_ptr[i] << " ";
-//         }
-//         std::cout << std::endl;
-//         std::cout << "a4 data: " << std::endl;
-//         data_ptr = (float *)uc->uc_mcontext.__gregs[14];
-//         for(int i =0; i < 16; i++){
-//             std::cout << data_ptr[i] << " ";
-//         }
-//         std::cout << std::endl;
-//     }
+void debug_print(ucontext_t *uc, uint64_t rela_start_addr){
+    std::cout << "offset = 0x" << std::hex << rela_start_addr << std::endl;
+    std::cout << std::dec << "vl = " << *(uint64_t*)(simulated_cpu_state_ptr + 0x1020) 
+        << " vtype = " <<  *(uint64_t*)(simulated_cpu_state_ptr + 0x1028) << std::endl;  
+    if ( rela_start_addr == 0x9aa){
+        std::cout << "a0 = " << uc->uc_mcontext.__gregs[10] << std::endl;
+        std::cout << "a1 = " << uc->uc_mcontext.__gregs[11] << std::endl;
+        std::cout << "a2 = " << uc->uc_mcontext.__gregs[12] << std::endl;
+        std::cout << "a3 = " << uc->uc_mcontext.__gregs[13] << std::endl;
+        std::cout << "a4 = " << uc->uc_mcontext.__gregs[14] << std::endl;
+        std::cout << "a3 data: " << std::endl;
+        float *data_ptr = (float *)uc->uc_mcontext.__gregs[13];
+        for(int i =0; i < 16; i++){
+            std::cout << data_ptr[i] << " ";
+        }
+        std::cout << std::endl;
+        std::cout << "a4 data: " << std::endl;
+        data_ptr = (float *)uc->uc_mcontext.__gregs[14];
+        for(int i =0; i < 16; i++){
+            std::cout << data_ptr[i] << " ";
+        }
+        std::cout << std::endl;
+    }
 
-//     print_vreg(8,0);
-//     print_vreg(10,0);
-//     print_vreg(12,0);
-//     std::cout << std::endl;
-// }
+    print_vreg(8,0);
+    print_vreg(10,0);
+    print_vreg(12,0);
+    std::cout << std::endl;
+}
 
 void my_handler(int sig, siginfo_t *info, void *context) {
     static int count_handler_enter = 0;
@@ -339,12 +345,17 @@ void my_handler(int sig, siginfo_t *info, void *context) {
     }
     if (rela_end_addr != 0) {
         uc->uc_mcontext.__gregs[REG_PC] = rela_end_addr + main_exe_base;
+        //DEBUG:打印pc
+        std::cout << "[DEBUG] handler return pc = " << std::hex << rela_end_addr + main_exe_base << std::endl;
     } else {
         std::cout << "rela_start_addr = " << rela_start_addr << std::endl;
         std::cerr << "Error: rela_end_addr is 0" << std::endl;
         // 抛出异常
         throw std::runtime_error("rela_end_addr is 0");
     }
+
+    // debug_print(uc, rela_start_addr);
+
     if (rela_start_addr == 0xc22){
         print_vreg(8, 0);
     }
