@@ -338,13 +338,13 @@ int init_inject(int argc, char* argv[]) {
     parseRangesRegex(envValue);
     make_addr_func_ptr_map(get_vector_snippet_ranges());
     
+    void *main_exe_handle = dlopen(NULL, RTLD_LAZY);
+    if (!main_exe_handle) {
+        std::cout << "Error in dlopen: " << dlerror() << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    main_exe_base = get_base_addr_with_dlinfo(main_exe_handle);
     // // ==> 旧代码的实现：ebreak方式 | patch迁移点和翻译点
-    // void *main_exe_handle = dlopen(NULL, RTLD_LAZY);
-    // if (!main_exe_handle) {
-    //     std::cout << "Error in dlopen: " << dlerror() << std::endl;
-    //     exit(EXIT_FAILURE);
-    // }
-    // main_exe_base = get_base_addr_with_dlinfo(main_exe_handle);
     // for(auto& range : get_vector_snippet_ranges()) {
     //     patch_code(range.first + main_exe_base);
     // }
