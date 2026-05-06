@@ -1,7 +1,7 @@
 #ifndef COMMON_H
 #define COMMON_H
 
-#define MAX_UPROBE_OFFSETS 100
+#define MAX_UPROBE_OFFSETS 1024
 
 struct uprobe_info {
     __u64 inode;
