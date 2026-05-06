@@ -268,6 +268,7 @@ void my_handler(int sig, siginfo_t *info, void *context) {
     }
 
     uint64_t rela_start_addr = fault_pc - main_exe_base;
+    std::cout << "rela start addr = " << std::hex << fault_pc << "; main exe base = " << main_exe_base << std::endl;
     uint64_t fn_addr = (uint64_t)(get_addr_func_ptr_map()[fault_pc - main_exe_base]);
     uint64_t rela_end_addr = 0;
     for(const auto& range : get_vector_snippet_ranges()) {
