@@ -200,63 +200,7 @@ void make_addr_func_ptr_map(const std::vector<std::pair<uint64_t, uint64_t>>& ra
     translated_lib_base = get_base_addr_with_dlinfo(translated_lib_handle);
 }
 
-void tmp_handle_scalar_vsetvl(ucontext_t *uc,uint64_t rela_start_addr){
-    // -->新代码的实现
-    if(rela_start_addr == 0xb8e){
-        uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
-    }
-    else if(rela_start_addr == 0xb96){
-        uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
-    }
-    else if(rela_start_addr == 0xbba){
-        uc->uc_mcontext.__gregs[10] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);
-    }   
-    // <--新代码的实现
-
-
-    // // -->旧代码的实现
-    // // if(rela_start_addr == 0x994){
-    // //     uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
-    // // }
-    // // else if(rela_start_addr == 0x99c){
-    // //     uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
-    // // }
-    // // else if(rela_start_addr == 0x9c0){
-    // //     uc->uc_mcontext.__gregs[10] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);
-    // // }   
-    
-    // // 无while版本
-    // if(rela_start_addr == 0x978){
-    //     uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
-    // }
-    // else if(rela_start_addr == 0x980){
-    //     uc->uc_mcontext.__gregs[12] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);        
-    // }
-    // else if(rela_start_addr == 0x9a4){
-    //     uc->uc_mcontext.__gregs[10] = *(uint64_t*)(simulated_cpu_state_ptr + 0x1020);
-    // }   
-    // // <--旧代码的实现
-}
-
 // --- Handler ---
-#define LOAD(reg, idx) \
-    do { \
-    __asm__ volatile ( \
-        "mv " #reg ", %0\n\t" \
-        : \
-        : "r" (uc->uc_mcontext.__gregs[idx]) \
-        : #reg  \
-    ); \
-} while(0)
-#define STORE(reg, idx) \
-    do { \
-        __asm__ volatile ( \
-            "mv %0, " #reg "\n\t" \
-            : "=r" (uc->uc_mcontext.__gregs[idx]) \
-            : \
-            : "memory" \
-        ); \
-    } while(0)
 
 void print_vreg(int vreg, int data_type){
     if (data_type == 0){
@@ -320,28 +264,11 @@ void my_handler(int sig, siginfo_t *info, void *context) {
         print_vreg(8,0);
         print_vreg(10,0);
         print_vreg(12,0);
-        std::endl;
+        std::cout <<std::endl;
     }
-    void (*fn)() = (void(*)())(get_addr_func_ptr_map()[fault_pc - main_exe_base]);
-    uint64_t tmp_main_exe = main_exe_base;
-    LOAD(a0, 10);
-    LOAD(a1, 11);
-    LOAD(a2, 12);
-    LOAD(a3, 13);
-    LOAD(a4, 14);
 
-    fn();
-
-    STORE(a0, 10);
-    STORE(a1, 11);
-    STORE(a2, 12);
-    STORE(a3, 13);
-    STORE(a4, 14);
-
-    main_exe_base = tmp_main_exe;
     uint64_t rela_start_addr = fault_pc - main_exe_base;
-
-    tmp_handle_scalar_vsetvl(uc, rela_start_addr);
+    uint64_t fn_addr = (uint64_t)(get_addr_func_ptr_map()[fault_pc - main_exe_base]);
     uint64_t rela_end_addr = 0;
     for(const auto& range : get_vector_snippet_ranges()) {
         if (rela_start_addr == range.first) {
@@ -350,7 +277,8 @@ void my_handler(int sig, siginfo_t *info, void *context) {
         }
     }
     if (rela_end_addr != 0) {
-        uc->uc_mcontext.__gregs[REG_PC] = rela_end_addr + main_exe_base;
+        uc->uc_mcontext.__gregs[REG_PC] = fn_addr;
+        uc->uc_mcontext.__gregs[REG_RA] = rela_end_addr + main_exe_base;
         //DEBUG:打印pc
         std::cout << "[DEBUG] handler return pc = " << std::hex << rela_end_addr + main_exe_base << std::endl;
     } else {
@@ -360,11 +288,12 @@ void my_handler(int sig, siginfo_t *info, void *context) {
         throw std::runtime_error("rela_end_addr is 0");
     }
 
-    // debug_print(uc, rela_start_addr);
 
-    if (rela_start_addr == 0xc22){
-        print_vreg(8, 0);
-    }
+    // // debug_print(uc, rela_start_addr);
+
+    // if (rela_start_addr == 0xc22){
+    //     print_vreg(8, 0);
+    // }
 }
 
 void setup_handler(){
