@@ -79,7 +79,6 @@ void save_vector_states(ucontext_t *uc) {
     for(int i = 0; i < 32* vlen / 64; i++){
         *((uint64_t*)simulated_cpu_state_ptr + i) = *((uint64_t*)v_ext_state->datap + i);
     }
-
 }
 
 static std::map<uint64_t, void*>& get_addr_func_ptr_map() {
@@ -312,9 +311,16 @@ void my_handler(int sig, siginfo_t *info, void *context) {
     ucontext_t *uc = (ucontext_t *)context;
     uint64_t fault_pc = (uint64_t)info->si_addr;
     if (!is_simulated_cpu_state_initialized) {
+        //DEBUG:打印pc
+        std::cout << "[DEBUG] handler fault pc = " << std::hex << fault_pc << std::endl;
         save_vector_states(uc);
         std::cout << ">>>      initialize simulated_cpu_state <<<" << std::endl;
         is_simulated_cpu_state_initialized = true;
+        std::cout << "vector registers:" << std::endl;
+        print_vreg(8,0);
+        print_vreg(10,0);
+        print_vreg(12,0);
+        std::endl;
     }
     void (*fn)() = (void(*)())(get_addr_func_ptr_map()[fault_pc - main_exe_base]);
     uint64_t tmp_main_exe = main_exe_base;
