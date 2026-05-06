@@ -443,6 +443,7 @@ int init_inject(int argc, char* argv[]) {
         for(auto& range : get_vector_snippet_ranges()) {
             patch_code_map(range.first);
         }
+        patch_code_map(0);
         std::cout << "[INJECTOR] Successfully write patch points to BPF map." << std::endl;
     }
     // <== 新代码结束

@@ -12,6 +12,9 @@
 #include "common.h"
 #include "patch.h"
 
+static uintptr_t patch_addrs[1024];
+static int patch_addr_cnt = 0;
+
 static __u64 get_main_exe_inode() {
     struct stat st;
     if (stat("/proc/self/exe", &st) == 0)
@@ -20,6 +23,10 @@ static __u64 get_main_exe_inode() {
 }
 
 int patch_code_map(uintptr_t addr) {
+    if(addr != 0){
+        patch_addrs[patch_addr_cnt++] = addr;
+        return 0;
+    }
     int map_fd = bpf_obj_get(MAP_PIN_PATH);
     if (map_fd < 0) {
         fprintf(stderr, "Failed to get BPF map fd: %s\n", strerror(errno));
@@ -30,25 +37,11 @@ int patch_code_map(uintptr_t addr) {
     __u64 inode = get_main_exe_inode();
 
     struct uprobe_info data = {0};
-    
-    // First try to read existing entry
-    int ret = bpf_map_lookup_elem(map_fd, &pid, &data);
-    if (ret == 0) {
-        // Entry exists, check if we can add more offsets
-        if (data.offset_cnt >= MAX_UPROBE_OFFSETS) {
-            fprintf(stderr, "Maximum offsets (%d) already reached for pid %d\n", MAX_UPROBE_OFFSETS, pid);
-            close(map_fd);
-            return -1;
-        }
-        // Add new offset to existing entry
-        data.offsets[data.offset_cnt] = addr;
-        data.offset_cnt++;
-    } else {
-        // No existing entry, create new one
-        data.inode = inode;
-        data.offsets[0] = addr;
-        data.offset_cnt = 1;
-        data.is_attached = false;
+    data.inode = inode;
+    data.is_attached = false;
+    data.offset_cnt = patch_addr_cnt;
+    for(int i = 0; i < patch_addr_cnt; i++){
+        data.offsets[i] = patch_addrs[i];
     }
 
     ret = bpf_map_update_elem(map_fd, &pid, &data, BPF_ANY);
@@ -58,8 +51,7 @@ int patch_code_map(uintptr_t addr) {
         return -1;
     }
 
-    printf("[PATCHER] Added offset 0x%lx to BPF map: pid=%d, inode=%lu, total_offsets=%d\n", 
-           addr, pid, inode, data.offset_cnt);
+    printf("[PATCHER] Added offset to BPF map: pid=%d, inode=%lu, total_offsets=%d\n", pid, inode, data.offset_cnt);
     close(map_fd);
     return 0;
 }
